@@ -26,4 +26,10 @@
     color: #f8fafc;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
+
+  html {
+  scroll-behavior: smooth;
+  /* Evita desplazamientos automáticos no deseados en algunos navegadores */
+  scroll-padding-top: 5rem; 
+}
 }

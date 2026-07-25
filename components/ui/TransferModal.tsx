@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { supabase } from "@/lib/supabase"; // Asegúrate de que la ruta coincida con tu cliente de Supabase
+import { createTransactionAction } from "@/app/actions/transaction"; // 👈 Importamos la Server Action segura
 
 interface TransferModalProps {
   isOpen: boolean;
   onClose: () => void;
   sendAmount: number;
   sendCurrency: "EUR" | "PEN";
-  receiveAmount: number | string; // Soporta number o string sin errores de TS
+  receiveAmount: number | string;
   receiveCurrency: "EUR" | "PEN";
+  userId?: string; // 👈 Recibimos el userId de la sesión de forma limpia
 }
 
 interface TransferFormData {
@@ -21,7 +22,6 @@ interface TransferFormData {
   recipientAccount: string;
 }
 
-// Valores iniciales limpios para el reseteo
 const INITIAL_FORM_DATA: TransferFormData = {
   fullName: "",
   email: "",
@@ -33,7 +33,6 @@ const INITIAL_FORM_DATA: TransferFormData = {
   recipientAccount: "",
 };
 
-// Configuración de las cuentas corporativas de recaudo de VALORA TRANSFER
 const BANK_ACCOUNTS = {
   EUR: {
     titular: "VALORA TRANSFER SAC",
@@ -54,6 +53,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   sendCurrency,
   receiveAmount,
   receiveCurrency,
+  userId,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -62,16 +62,14 @@ export const TransferModal: React.FC<TransferModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Selección dinámica de la cuenta bancaria para el depósito según la moneda de origen[cite: 5]
   const bankDetails = BANK_ACCOUNTS[sendCurrency] || BANK_ACCOUNTS.EUR;
 
-  // 🧹 FUNCIÓN DE RESETEO INTEGRAL POST-OPERACIÓN O AL CERRAR
   const handleFullReset = () => {
     setFormData(INITIAL_FORM_DATA);
     setOperationCode("");
     setIsCompleted(false);
     setIsSubmitting(false);
-    onClose(); // Ejecuta el cierre enviado desde el padre[cite: 5]
+    onClose();
   };
 
   const handleChange = (
@@ -85,85 +83,64 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Generar código de operación único[cite: 5]
-      const generatedCode = `VT-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      // 2. REGISTRO/ACTUALIZACIÓN DEL CLIENTE[cite: 5]
-      const { data: clientData, error: clientError } = await supabase
-        .from("clients")
-        .upsert(
-          [
-            {
-              full_name: formData.fullName,
-              email: formData.email,
-              document_type: formData.documentType,
-              document_number: formData.documentNumber,
-              phone: formData.phone,
-            },
-          ],
-          { onConflict: "document_number" }
-        )
-        .select("id")
-        .single();
-
-      if (clientError) {
-        console.error("Error al registrar cliente en Supabase:", clientError);
-        alert(`Error al guardar datos del remitente: ${clientError.message}`);
+      if (!userId) {
+        alert("Debes iniciar sesión para realizar una transferencia.");
+        setIsSubmitting(false);
         return;
       }
 
-      // 3. REGISTRO DE LA TRANSACCIÓN[cite: 5]
-      const { error: txError } = await supabase.from("transactions").insert([
-        {
-          client_id: clientData.id,
-          operation_code: generatedCode,
-          send_amount: sendAmount,
-          send_currency: sendCurrency,
-          receive_amount: receiveAmount,
-          receive_currency: receiveCurrency,
-          recipient_name: formData.recipientName,
-          recipient_bank: formData.recipientBank,
-          recipient_account: formData.recipientAccount,
-          status: "PENDIENTE",
-        },
-      ]);
+      // 🔒 EJECUCIÓN SEGURA MEDIANTE SERVER ACTION (No expone tablas en el Network)
+      const result = await createTransactionAction({
+        user_id: userId,
+        send_amount: sendAmount,
+        send_currency: sendCurrency,
+        receive_amount: typeof receiveAmount === "string" ? parseFloat(receiveAmount) : receiveAmount,
+        receive_currency: receiveCurrency,
+        recipient_name: formData.recipientName,
+        recipient_bank: formData.recipientBank,
+        recipient_account: formData.recipientAccount,
+        client_data: {
+          full_name: formData.fullName,
+          email: formData.email,
+          document_type: formData.documentType,
+          document_number: formData.documentNumber,
+          phone: formData.phone,
+        }
+      });
 
-      if (txError) {
-        console.error("Error al registrar transacción en Supabase:", txError);
-        alert(`Error al crear la orden de transferencia: ${txError.message}`);
-        return;
+      if (!result.success) {
+        throw new Error(result.error || "Error al procesar la orden.");
       }
 
-      // 4. Éxito[cite: 5]
-      setOperationCode(generatedCode);
+      // Éxito: Obtenemos el código generado de manera blindada
+      setOperationCode(result.data.operation_code);
       setIsCompleted(true);
     } catch (err: any) {
-      console.error("Error inesperado en el servidor:", err);
-      alert("Error inesperado al procesar la transferencia.");
+      console.error("Error crítico al procesar transferencia:", err);
+      alert(`Error inesperado al procesar: ${err.message || err}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Generación del enlace dinámico hacia WhatsApp[cite: 5]
   const handleWhatsAppRedirect = () => {
     const whatsappPhone = "51987408496";
 
     const lines = [
-      "\uD83D\uDE80 \u00A1Hola Valora Transfer!",
+      "🚀 ¡Hola Valora Transfer!",
       `Acabo de generar la orden de transferencia *${operationCode}*.`,
       "",
-      "\uD83D\uDCCD *Detalles del Env\u00EDo:*",
+      "📍 *Detalles del Envío:*",
       `- Monto Enviado: ${sendAmount} ${sendCurrency}`,
       `- Monto a Recibir: ${receiveAmount} ${receiveCurrency}`,
       `- Remitente: ${formData.fullName} (${formData.documentType}: ${formData.documentNumber})`,
       `- Destinatario: ${formData.recipientName}`,
       `- Banco Destino: ${formData.recipientBank}`,
-      `- N\u00B0 Cuenta / CCI / IBAN: ${formData.recipientAccount}`,
+      `- N° Cuenta / CCI / IBAN: ${formData.recipientAccount}`,
       "",
       "Adjunto mi comprobante de pago realizado a la cuenta de recaudo:",
-      `\uD83C\uDFE6 ${bankDetails.bank}`,
-      `\uD83D\uDCB3 ${bankDetails.accountNumber}`,
+      `🏦 ${bankDetails.bank}`,
+      `💳 ${bankDetails.accountNumber}`,
     ];
 
     const rawText = lines.join("\n");
@@ -180,34 +157,31 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       const encodedText = encodeURIComponent(safeText);
       const url = `https://wa.me/${whatsappPhone}?text=${encodedText}`;
 
-      // 1. Abrir WhatsApp[cite: 5]
       window.open(url, "_blank", "noopener,noreferrer");
-
-      // 2. ⚡ RESETEAR Y CERRAR EL MODAL TRAS ENVIAR A WHATSAPP
       handleFullReset();
+      window.location.href = "/portal-cliente";
     } catch (error) {
       console.error("Error al abrir WhatsApp:", error);
       const fallbackUrl = `https://wa.me/${whatsappPhone}?text=Hola%20Valora%20Transfer,%20orden%20*${operationCode}*`;
       window.open(fallbackUrl, "_blank", "noopener,noreferrer");
       
-      // ⚡ RESETEAR EN CASO DE FALLBACK
       handleFullReset();
+      window.location.href = "/portal-cliente";
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-lg rounded-2xl bg-[#0f172a] border border-slate-800 p-6 text-white shadow-2xl">
-        {/* Botón X de Cierre con Reseteo Garantizado */}
         <button
+          type="button"
           onClick={handleFullReset}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors cursor-pointer"
         >
           ✕
         </button>
 
         {!isCompleted ? (
-          /* PASO 1: FORMULARIO DE REGISTRO */
           <form onSubmit={handleSubmit} className="space-y-4">
             <h2 className="text-xl font-bold text-center">Datos de la Remesa</h2>
             <p className="text-center text-emerald-400 text-sm font-medium">
@@ -316,13 +290,12 @@ export const TransferModal: React.FC<TransferModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-4 rounded-xl bg-emerald-500 py-3 font-semibold text-slate-950 hover:bg-emerald-400 transition-colors disabled:opacity-50"
+              className="w-full mt-4 rounded-xl bg-emerald-500 py-3 font-semibold text-slate-950 hover:bg-emerald-400 transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? "Procesando..." : "🚀 Generar Orden de Transferencia"}
             </button>
           </form>
         ) : (
-          /* PASO 2: PANTALLA DE ÉXITO CON DATOS DE CUENTA DINÁMICOS */
           <div className="flex flex-col items-center text-center space-y-4 py-2">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xl font-bold">
               ✓
@@ -363,8 +336,9 @@ export const TransferModal: React.FC<TransferModalProps> = ({
             </div>
 
             <button
+              type="button"
               onClick={handleWhatsAppRedirect}
-              className="w-full rounded-xl bg-emerald-500 py-3.5 font-semibold text-slate-950 hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10"
+              className="w-full rounded-xl bg-emerald-500 py-3.5 font-semibold text-slate-950 hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer"
             >
               Enviar Comprobante por WhatsApp
             </button>
