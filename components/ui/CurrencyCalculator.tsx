@@ -3,29 +3,40 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftRight, RefreshCw, ShieldCheck } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/db";
 import { rateChannel } from "@/lib/rateSync";
+
+type OriginCurrency = "EUR" | "USD";
 
 export function CurrencyCalculator() {
   const router = useRouter();
 
-  const [direction, setDirection] = useState<"EUR_PEN" | "PEN_EUR">("PEN_EUR");
-  const [sendAmount, setSendAmount] = useState<string>("390.00"); // Inicializado acorde al factor 3.9
+  const [originCurrency, setOriginCurrency] = useState<OriginCurrency>("EUR");
+  const [direction, setDirection] = useState<"ORIGIN_PEN" | "PEN_ORIGIN">("ORIGIN_PEN");
+  const [sendAmount, setSendAmount] = useState<string>("390.00");
   
-  // Tasas independientes estrictas
-  const [buyRate, setBuyRate] = useState<number>(3.76);   // EUR -> PEN (Compra)
-  const [sellRate, setSellRate] = useState<number>(3.90);  // PEN -> EUR (Venta - Factor directo o inverso)
+  // Tasas independientes configurables
+  const [buyRateEur, setBuyRateEur] = useState<number>(3.76);   // EUR -> PEN
+  const [sellRateEur, setSellRateEur] = useState<number>(3.90);  // PEN -> EUR
+  const [buyRateUsd, setBuyRateUsd] = useState<number>(3.70);   // USD -> PEN (Nueva tasa USD)
+  const [sellRateUsd, setSellRateUsd] = useState<number>(3.82);  // PEN -> USD (Nueva tasa USD)
+  
   const [loadingRate, setLoadingRate] = useState<boolean>(false);
 
   const fetchRates = async () => {
     try {
       setLoadingRate(true);
-      // Consultamos ambas variantes de claves posibles para asegurar compatibilidad total con el panel admin
       const { data, error } = await supabase
         .from("site_config")
         .select("key, value")
-        .in("key", ["exchange_rate_buy", "exchange_rate_sell", "exchange_rate_sale"]);
-        .gt("updated_at", "2000-01-01");
+        .in("key", [
+          "exchange_rate_buy", 
+          "exchange_rate_sell", 
+          "exchange_rate_sale",
+          "exchange_rate_buy_usd",
+          "exchange_rate_sell_usd"
+        ]);
+
       if (error) throw error;
 
       if (data && data.length > 0) {
@@ -33,12 +44,10 @@ export function CurrencyCalculator() {
           const val = parseFloat(item.value);
           if (isNaN(val)) return;
 
-          if (item.key === "exchange_rate_buy") {
-            setBuyRate(val);
-          }
-          if (item.key === "exchange_rate_sell" || item.key === "exchange_rate_sale") {
-            setSellRate(val);
-          }
+          if (item.key === "exchange_rate_buy") setBuyRateEur(val);
+          if (item.key === "exchange_rate_sell" || item.key === "exchange_rate_sale") setSellRateEur(val);
+          if (item.key === "exchange_rate_buy_usd") setBuyRateUsd(val);
+          if (item.key === "exchange_rate_sell_usd") setSellRateUsd(val);
         });
       }
     } catch (err) {
@@ -51,9 +60,7 @@ export function CurrencyCalculator() {
   useEffect(() => {
     fetchRates();
 
-    const handleLocalUpdate = () => {
-      fetchRates();
-    };
+    const handleLocalUpdate = () => { fetchRates(); };
     window.addEventListener("valora_rate_updated", handleLocalUpdate);
 
     if (rateChannel) {
@@ -65,49 +72,45 @@ export function CurrencyCalculator() {
     }
 
     const subscription = supabase
-      .channel("public:site_config_calculator_master_fix")
+      .channel("public:site_config_calculator_multicurrency")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "site_config" },
-        () => {
-          fetchRates();
-        }
+        () => { fetchRates(); }
       )
       .subscribe();
 
     return () => {
       window.removeEventListener("valora_rate_updated", handleLocalUpdate);
-      if (rateChannel) {
-        rateChannel.onmessage = null;
-      }
+      if (rateChannel) { rateChannel.onmessage = null; }
       supabase.removeChannel(subscription);
     };
   }, []);
 
+  // Seleccionar tasas activas según la moneda de origen elegida
+  const activeBuyRate = originCurrency === "EUR" ? buyRateEur : buyRateUsd;
+  const activeSellRate = originCurrency === "EUR" ? sellRateEur : sellRateUsd;
+
   const numericSend = parseFloat(sendAmount) || 0;
 
-  // 📐 MATEMÁTICA FINANCIERA CORREGIDA:
-  // - EUR_PEN: Envías Euros, multiplicas por buyRate para obtener Soles.
-  // - PEN_EUR: Envías Soles, divides estrictamente entre el sellRate configurado en el panel (ej. 3.9).
-  const receiveAmount = direction === "EUR_PEN"
-    ? (numericSend * buyRate).toFixed(2)
-    : (sellRate > 0 ? (numericSend / sellRate).toFixed(2) : "0.00");
+  // Cálculo financiero según dirección y moneda
+  const receiveAmount = direction === "ORIGIN_PEN"
+    ? (numericSend * activeBuyRate).toFixed(2)
+    : (activeSellRate > 0 ? (numericSend / activeSellRate).toFixed(2) : "0.00");
 
   const toggleDirection = () => {
-    if (direction === "EUR_PEN") {
-      setDirection("PEN_EUR");
-      setSendAmount((100 * sellRate).toFixed(2));
+    if (direction === "ORIGIN_PEN") {
+      setDirection("PEN_ORIGIN");
+      setSendAmount((100 * activeSellRate).toFixed(2));
     } else {
-      setDirection("EUR_PEN");
+      setDirection("ORIGIN_PEN");
       setSendAmount("100");
     }
   };
 
-  // 🎯 BADGE SUPERIOR BLINDADO: 
-  // Muestra exactamente el valor de la tasa de venta (sellRate) ingresado en el panel administrativo.
-  const badgeDisplay = direction === "EUR_PEN"
-    ? `1 EUR = ${buyRate.toFixed(4)} PEN`
-    : `1 EUR = ${sellRate.toFixed(4)} PEN (Venta)`; // Refleja claramente el factor de venta operativo
+  const badgeDisplay = direction === "ORIGIN_PEN"
+    ? `1 ${originCurrency} = ${activeBuyRate.toFixed(4)} PEN`
+    : `1 ${originCurrency} = ${activeSellRate.toFixed(4)} PEN (Venta)`;
 
   const handleStartTransfer = async () => {
     try {
@@ -125,13 +128,13 @@ export function CurrencyCalculator() {
         return;
       }
 
-      const isSendingEUR = direction === "EUR_PEN";
+      const isSendingOrigin = direction === "ORIGIN_PEN";
 
       const queryParams = new URLSearchParams({
         sendAmount: parsedSend.toString(),
-        sendCurrency: isSendingEUR ? 'EUR' : 'PEN',
+        sendCurrency: isSendingOrigin ? originCurrency : 'PEN',
         receiveAmount: receiveAmount,
-        receiveCurrency: isSendingEUR ? 'PEN' : 'EUR'
+        receiveCurrency: isSendingOrigin ? 'PEN' : originCurrency
       });
 
       router.push(`/portal/nuevo-envio?${queryParams.toString()}`);
@@ -145,21 +148,50 @@ export function CurrencyCalculator() {
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative">
       
+      {/* Cabecera con Selector de Moneda (EUR / USD) */}
       <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
         <div>
           <h3 className="text-lg font-extrabold text-white">Calculadora de Envíos</h3>
           <p className="text-xs text-slate-400">Tasa en tiempo real y garantizada</p>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-400">
+
+        <div className="flex items-center gap-3">
+          {/* Switch de Divisa de Origen */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+            {(["EUR", "USD"] as OriginCurrency[]).map((cur) => (
+              <button
+                key={cur}
+                type="button"
+                onClick={() => setOriginCurrency(cur)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                  originCurrency === cur
+                    ? "bg-emerald-500 text-slate-950 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                {cur}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Badge de Tasa Actual */}
+      <div className="flex items-center justify-between mb-4 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-400">
+        <span className="text-slate-400 text-[11px]">Tasa de referencia:</span>
+        <div className="flex items-center gap-1.5">
           <RefreshCw className={`w-3.5 h-3.5 ${loadingRate ? "animate-spin" : ""}`} />
           <span>{badgeDisplay}</span>
         </div>
       </div>
 
       <div className="space-y-4">
+        {/* Input Bloque Origen */}
         <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-            {direction === "EUR_PEN" ? "Tú envías desde España" : "Tú envías desde Perú"}
+            {direction === "ORIGIN_PEN" 
+              ? `Tú envías desde ${originCurrency === "EUR" ? "España" : "Estados Unidos"}` 
+              : "Tú envías desde Perú"}
           </span>
           <div className="flex items-center justify-between gap-2">
             <input
@@ -169,11 +201,12 @@ export function CurrencyCalculator() {
               className="w-full bg-transparent text-2xl font-extrabold font-mono text-white outline-none"
             />
             <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold font-mono text-emerald-400">
-              {direction === "EUR_PEN" ? "EUR €" : "PEN S/"}
+              {direction === "ORIGIN_PEN" ? `${originCurrency} ${originCurrency === "EUR" ? "€" : "$"}` : "PEN S/"}
             </span>
           </div>
         </div>
 
+        {/* Botón Invertir Dirección */}
         <div className="flex justify-center -my-2 relative z-10">
           <button
             onClick={toggleDirection}
@@ -188,16 +221,17 @@ export function CurrencyCalculator() {
           </button>
         </div>
 
+        {/* Input Bloque Destino */}
         <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-            {direction === "EUR_PEN" ? "El destinatario recibe en Perú" : "El destinatario recibe en Europa"}
+            {direction === "ORIGIN_PEN" ? "El destinatario recibe en Perú" : `El destinatario recibe en ${originCurrency === "EUR" ? "Europa" : "EE.UU."}`}
           </span>
           <div className="flex items-center justify-between gap-2">
             <span className="w-full text-2xl font-extrabold font-mono text-emerald-400">
               {receiveAmount}
             </span>
             <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold font-mono text-emerald-400">
-              {direction === "EUR_PEN" ? "PEN S/" : "EUR €"}
+              {direction === "ORIGIN_PEN" ? "PEN S/" : `${originCurrency} ${originCurrency === "EUR" ? "€" : "$"}`}
             </span>
           </div>
         </div>
@@ -206,7 +240,7 @@ export function CurrencyCalculator() {
       <div className="mt-6 pt-4 border-t border-slate-800/80 space-y-2 text-xs text-slate-400">
         <div className="flex justify-between">
           <span>Comisión de transferencia:</span>
-          <span className="font-semibold text-emerald-400">0.00 EUR (¡Gratis!)</span>
+          <span className="font-semibold text-emerald-400">0.00 {originCurrency} (¡Gratis!)</span>
         </div>
         <div className="flex justify-between">
           <span>Tiempo estimado de abono:</span>

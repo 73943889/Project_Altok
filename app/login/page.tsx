@@ -1,16 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, ArrowRight, Building2, ShieldCheck, AlertCircle } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-// Inicialización segura del cliente de Supabase
-/*const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-);*/
-
+import { Lock, Mail, ArrowRight, Building2, AlertCircle } from "lucide-react";
+import { loginAction } from "@/app/actions/auth";
+import Link from "next/link";
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -18,39 +12,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
- const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMessage("");
 
     try {
-      // 1. Autenticación con Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const result = await loginAction({ 
+        email, 
+        password: password 
       });
 
-      if (authError) throw authError;
-
-      const user = authData.user;
-      if (!user) throw new Error("No se pudo obtener la sesión del usuario.");
-
-      // 2. Verificación de rol en la tabla de perfiles (opcional pero recomendado)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      // 3. Redirección inteligente basada en permisos y roles reales
-      if (profile?.role === "admin" || email.toLowerCase().includes("admin")) {
-        router.push("/admin");
-      } else {
-        router.push("/portal-cliente"); // ✅ Redirección correcta al portal del cliente
+      if (!result.success) {
+        throw new Error(result.error || "Credenciales inválidas.");
       }
+
+      const user = result.user;
+      const role = user?.role;
+
+      // Redirección directa por hardware de navegador para evitar loops de caché
+      if (role === "admin" || email.toLowerCase().includes("admin")) {
+        window.location.href = "/admin";
+      } else {
+        window.location.href = "/portal-cliente";
+      }
+      
     } catch (err: any) {
       setErrorMessage(err.message || "Credenciales inválidas o error al iniciar sesión.");
-    } finally {
       setLoading(false);
     }
   };
@@ -68,7 +56,7 @@ export default function LoginPage() {
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-emerald-500/20 mx-auto">
             <Building2 className="w-6 h-6 text-slate-950" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Acceso a ValoraTransfer</h1>
+          <h1 className="text-2xl font-black tracking-tight text-white">Acceso a Altok€</h1>
           <p className="text-xs text-slate-400">Ingresa tus credenciales para acceder al sistema</p>
         </div>
 
@@ -89,7 +77,7 @@ export default function LoginPage() {
               <input 
                 required
                 type="email"
-                placeholder="admin@valoratransfer.com"
+                placeholder="ejm:pedro@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
@@ -115,25 +103,25 @@ export default function LoginPage() {
           <button 
             disabled={loading}
             type="submit"
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-extrabold text-sm hover:opacity-95 transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-extrabold text-sm hover:opacity-95 transition-all shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 mt-2 disabled:opacity-50 cursor-pointer"
           >
-            {loading ? "Verificando acceso..." : "Ingresar al Sistema"} <ArrowRight className="w-4 h-4" />
+            {loading ? "Verificando acceso..." : "Iniciar Sesión"} <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
         <div className="mt-6 pt-6 border-t border-slate-800 text-center space-y-2">
-  <p className="text-xs text-slate-400">
-    ¿Aún no tienes cuenta?{" "}
-    <a href="/register" className="text-emerald-400 font-semibold hover:underline">
-      Regístrate aquí
-    </a>
-  </p>
-  <div>
-    <a href="/" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-      ← Volver al sitio principal
-    </a>
-  </div>
-</div>
+          <p className="text-xs text-slate-400">
+            ¿Aún no tienes cuenta?{" "}
+            <Link href="/register" className="text-emerald-400 font-semibold hover:underline">
+              Regístrate aquí
+            </Link>
+          </p>
+          <div>
+            <Link href="/" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+              ← Volver al sitio principal
+            </Link>
+          </div>
+        </div>
 
       </div>
     </div>

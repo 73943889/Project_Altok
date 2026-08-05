@@ -1,21 +1,21 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "ValoraTransfer | Envíos de Dinero y Remesas Perú - España",
+  title: "Altok€ | Envíos de Dinero y Remesas Perú - España - Estados Unidos",
   description: "Envía dinero de España a Perú con la mejor tasa de cambio del mercado, sin comisiones ocultas y transferencias directas a BCP, BBVA, Interbank y Yape/Plin.",
-  keywords: ["remesas peru", "enviar dinero a peru", "tasa de cambio euro sol", "valoratransfer", "transferencias peru"],
-  authors: [{ name: "ValoraTransfer" }],
+  keywords: ["remesas peru", "enviar dinero a peru", "tasa de cambio euro sol", "Altok€", "transferencias peru"],
+  authors: [{ name: "Altok€" }],
   openGraph: {
-    title: "ValoraTransfer - Transferencias de Dinero Rápidas y Seguras",
+    title: "Altok€ - Transferencias de Dinero Rápidas y Seguras",
     description: "Calcula tu envío en tiempo real y recibe tus soles en minutos.",
     url: "https://valoratransfer.com",
-    siteName: "ValoraTransfer",
+    siteName: "Altok€",
     locale: "es_PE",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ValoraTransfer | Envíos de Dinero",
+    title: "Altok€ | Envíos de Dinero",
     description: "Tu dinero seguro en Perú con las mejores tasas de cambio.",
   },
   robots: {
@@ -33,7 +33,7 @@ export default function RootLayout({
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "FinancialService",
-    "name": "ValoraTransfer",
+    "name": "Altok€",
     "url": "https://valoratransfer.com",
     "logo": "https://valoratransfer.com/logo.png",
     "description": "Servicios de transferencia de dinero y remesas internacionales entre Europa y Perú.",

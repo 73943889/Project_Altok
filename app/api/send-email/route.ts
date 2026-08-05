@@ -16,28 +16,28 @@ export async function POST(request: Request) {
     }
 
     // Configuración del contenido según el estado
-    let subject = `Actualización de tu Remesa ${operationCode} - ValoraTransfer`;
+    let subject = `Actualización de tu Remesa ${operationCode} - Altok€`;
     let statusMessage = "";
     let statusColor = "#10b981"; // Emerald-500
 
     switch (status) {
       case "PENDIENTE":
-        subject = `📋 Orden Registrada (${operationCode}) - ValoraTransfer`;
+        subject = `📋 Orden Registrada (${operationCode}) - Altok€`;
         statusMessage = "Hemos registrado tu solicitud de remesa. Por favor realiza el depósito a nuestras cuentas oficiales para proceder con la validación.";
         statusColor = "#f59e0b"; // Amber-500
         break;
       case "EN_PROCESO":
-        subject = `⏳ Orden en Proceso (${operationCode}) - ValoraTransfer`;
+        subject = `⏳ Orden en Proceso (${operationCode}) - Altok€`;
         statusMessage = "Hemos verificado tu depósito. Tu transferencia está siendo enviada a la cuenta de destino en Perú/España.";
         statusColor = "#3b82f6"; // Blue-500
         break;
       case "COMPLETADO":
-        subject = `✅ ¡Transferencia Exitosa! (${operationCode}) - ValoraTransfer`;
-        statusMessage = "¡Tu dinero ha sido abonado con éxito en la cuenta de destino! Gracias por confiar en ValoraTransfer.";
+        subject = `✅ ¡Transferencia Exitosa! (${operationCode}) - Altok€`;
+        statusMessage = "¡Tu dinero ha sido abonado con éxito en la cuenta de destino! Gracias por confiar en Altok€.";
         statusColor = "#10b981"; // Emerald-500
         break;
       case "RECHAZADO":
-        subject = `❌ Orden Incompleta/Rechazada (${operationCode}) - ValoraTransfer`;
+        subject = `❌ Orden Incompleta/Rechazada (${operationCode}) - Altok€`;
         statusMessage = "No pudimos validar la transacción. Por favor comunícate con nuestro equipo de soporte por WhatsApp.";
         statusColor = "#ef4444"; // Red-500
         break;
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         <body>
           <div class="card">
             <div class="header">
-              <div class="brand">VALORA TRANSFER</div>
+              <div class="brand">Altok€</div>
               <p style="color: #94a3b8; font-size: 14px; margin-top: 4px;">Plataforma de Remesas Perú ↔ España</p>
             </div>
             
@@ -91,8 +91,8 @@ export async function POST(request: Request) {
             </div>
 
             <div className="footer">
-              <p>Este es un correo automático generado por ValoraTransfer. No respondas a esta dirección.</p>
-              <p>© 2026 ValoraTransfer SAC. Todos los derechos reservados.</p>
+              <p>Este es un correo automático generado por Altok€. No respondas a esta dirección.</p>
+              <p>© 2026 Altok€ SAC. Todos los derechos reservados.</p>
             </div>
           </div>
         </body>
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     `;
 
     const { data, error } = await resend.emails.send({
-      from: env.RESEND_FROM_EMAIL || "ValoraTransfer <onboarding@resend.dev>",
+      from: env.RESEND_FROM_EMAIL || "Altok€ <onboarding@resend.dev>",
       to: [email],
       subject: subject,
       html: htmlTemplate,

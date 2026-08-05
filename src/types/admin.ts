@@ -1,5 +1,5 @@
 /**
- * Estados permitidos para una transacción dentro de ValoraTransfer
+ * Estados permitidos para una transacción dentro de Altok€
  */
 export type TransactionStatus = 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADO' | 'RECHAZADO';
 
