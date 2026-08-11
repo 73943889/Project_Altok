@@ -3,20 +3,25 @@
 import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
-import { revalidatePath } from 'next/cache';
-import { globalEmitter } from '@/lib/events-emitter';
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'tu_clave_secreta_super_segura_para_jwt'
-);
+import { unstable_noStore as noStore } from "next/cache";
+import { globalEventStore } from '@/lib/eventsStore';
+
+if (!process.env.JWT_SECRET) {
+  throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
+}
+
+const JWT_SECRET_KEY = new TextEncoder().encode(process.env.JWT_SECRET!);
 
 export async function getAdminOperations() {
+  noStore();
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value;
 
     if (!token) return { success: false, error: 'No autorizado' };
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET_KEY);
+    
     const userRes: any = await query(
       'SELECT role FROM public.users WHERE id = $1 LIMIT 1',
       [payload.userId]
@@ -27,7 +32,6 @@ export async function getAdminOperations() {
       return { success: false, error: 'Acceso denegado' };
     }
 
-    // Consulta SQL directa mediante Neon Pool (Servidor puro)
     const txRes: any = await query(`
       SELECT 
         t.*, 
@@ -46,12 +50,12 @@ export async function getAdminOperations() {
   }
 }
 
-// app/actions/admin-dashboard (o el archivo donde tengas tu Server Action)
 export async function updateTransactionStatusAction(
   transactionId: string, 
   newStatus: string, 
   internalNotes?: string | null
 ) {
+  noStore(); 
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
@@ -60,7 +64,7 @@ export async function updateTransactionStatusAction(
 
     if (token) {
       try {
-        const { payload } = await jwtVerify(token, JWT_SECRET);
+        const { payload } = await jwtVerify(token, JWT_SECRET_KEY);
         const userRes: any = await query(
           "SELECT email FROM public.users WHERE id = $1 LIMIT 1",
           [payload.userId]
@@ -74,7 +78,6 @@ export async function updateTransactionStatusAction(
       }
     }
 
-    // 🛡️ Lógica de negocio automatizada para internal_notes según el estado
     let finalNotes = internalNotes;
     if (newStatus === "COMPLETADO") {
       finalNotes = "Transacción exitosa";
@@ -85,7 +88,7 @@ export async function updateTransactionStatusAction(
       finalNotes = `${finalNotes.trim()}`;
     }
 
-    // 🚀 Actualizamos el estado, las notas internas, el administrador y la fecha
+    // 🚀 Actualización en Neon PostgreSQL
     const res = await query(
       `UPDATE public.transactions 
        SET status = $1, processed_by = $2, internal_notes = COALESCE($3, internal_notes), updated_at = NOW() 
@@ -98,6 +101,17 @@ export async function updateTransactionStatusAction(
 
     if (!updatedTx) {
       throw new Error("No se encontró la transacción a actualizar.");
+    }
+
+    // ⚡ Emisión en tiempo real segura mediante el almacén global de eventos (SSE)
+    try {
+      if (globalEventStore && typeof (globalEventStore as any).notifyAll === 'function') {
+        (globalEventStore as any).notifyAll(`update:${transactionId}|${newStatus}`);
+      } else if (globalEventStore && typeof (globalEventStore as any).broadcast === 'function') {
+        (globalEventStore as any).broadcast(`update:${transactionId}|${newStatus}`);
+      }
+    } catch (e) {
+      console.warn("Aviso SSE Broadcast:", e);
     }
 
     return { success: true, transaction: updatedTx };

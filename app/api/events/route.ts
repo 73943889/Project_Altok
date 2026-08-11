@@ -1,49 +1,38 @@
 // app/api/events/route.ts
-import { NextResponse } from 'next/server';
-import { globalEmitter } from '@/lib/events-emitter';
+import { NextRequest } from 'next/server';
+import { globalEventStore } from '@/lib/eventsStore';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
-  const encoder = new TextEncoder();
-
-  const customStream = new ReadableStream({
+export async function GET(req: NextRequest) {
+  const stream = new ReadableStream({
     start(controller) {
-      const sendEvent = (data: string) => {
-        try {
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-        } catch (e) {
-          // Si el cliente se desconecta, evitamos excepciones de flujo
-        }
-      };
+      globalEventStore.addClient(controller);
+      const encoder = new TextEncoder();
+      
+      // Mensaje inicial de conexión
+      controller.enqueue(encoder.encode('data: connected\n\n'));
 
-      // 1. Enviar evento inicial de conexión
-      sendEvent('connected');
-
-      // 2. Latido (Heartbeat) cada 15 segundos para mantener la conexión HTTP viva
+      // Heartbeat pasivo de red cada 30 segundos (NO consulta la base de datos)
       const heartbeat = setInterval(() => {
-        sendEvent('ping');
-      }, 15000);
+        try {
+          controller.enqueue(encoder.encode('data: ping\n\n'));
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, 30000);
 
-      // 3. Escuchar la actualización de transacciones emitida por la Server Action
-      const listener = (transactionId: string) => {
-        sendEvent(`update:${transactionId}`);
-      };
-
-      globalEmitter.on('transactionUpdated', listener);
-
-      // 4. Limpieza automática al cerrar la pestaña o desconectarse
-      request.signal.addEventListener('abort', () => {
+      req.signal.addEventListener('abort', () => {
         clearInterval(heartbeat);
-        globalEmitter.off('transactionUpdated', listener);
+        globalEventStore.removeClient(controller);
         try {
           controller.close();
-        } catch (e) {}
+        } catch {}
       });
     },
   });
 
-  return new Response(customStream, {
+  return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',

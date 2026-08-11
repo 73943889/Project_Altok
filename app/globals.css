@@ -31,6 +31,9 @@
     scroll-behavior: smooth;
     scroll-padding-top: 5rem; 
   }
+  #calculadora {
+  scroll-margin-top: 7rem; /* Equivalente a la altura del header (h-24 o h-28) + padding de respiro */
+}
 }
 
 /* 🎨 Utilidades personalizadas para Altok€ (Scrollbars elegantes) */

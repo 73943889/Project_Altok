@@ -5,7 +5,7 @@ import { Save, RefreshCw, ShieldCheck, TrendingUp, DollarSign, Euro, Percent, Wa
 import { updateRatesAction } from "@/app/actions/rates";
 import { AdminNavbar } from "@/app/admin/AdminNavbar";
 
-export default function AdminTasaClient({ initialRates }: { initialRates: any[] }) {
+export default function AdminTasaClient({ initialRates,userEmail }: { initialRates: any[]; userEmail?: string }) {
   const getRateValue = (key: string, fallback: string) => {
     const found = initialRates.find((r) => r.key === key);
     if (!found || found.value === null || found.value === undefined) return fallback;
@@ -127,7 +127,8 @@ export default function AdminTasaClient({ initialRates }: { initialRates: any[] 
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
-      <AdminNavbar />
+      {/* 2. Le inyectamos el prop userEmail al Navbar */}
+      <AdminNavbar userEmail={userEmail} />
 
       <div className="max-w-4xl mx-auto px-6 space-y-10 mt-8">
         <div className="border-b border-slate-800 pb-6 flex items-center justify-between">

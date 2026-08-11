@@ -1,7 +1,7 @@
-'use server';
+'use client';
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { supabase } from "@/lib/db";
+import { query } from "@/lib/db";
 import { ClientOperation, TransactionStatus } from "@/src/types/admin";
 import { AdminNavbar } from "@/app/admin/AdminNavbar";
 import {
@@ -22,7 +22,10 @@ import {
 
 export default function AdminDashboard() {
   const [operations, setOperations] = useState<ClientOperation[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+
+  const [loading, setLoading] = useState<boolean>(false);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("TODOS");
   const [selectedOperation, setSelectedOperation] = useState<ClientOperation | null>(null);
@@ -34,6 +37,11 @@ export default function AdminDashboard() {
 
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Controlar la hidratación del cliente
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Cierra el menú desplegable al hacer clic fuera de él
   useEffect(() => {
@@ -49,42 +57,38 @@ export default function AdminDashboard() {
   const fetchOperations = async () => {
     setLoading(true);
     try {
-      // 1. Consulta relacional: Trae las transacciones combinadas con la tabla de clientes
-      const { data: txData, error: txError } = await supabase
-        .from("transactions")
-        .select(`
-          *,
-          clients (
-            id,
-            full_name,
-            email,
-            document_type,
-            document_number,
-            phone
-          )
-        `)
-        .order("created_at", { ascending: false });
+      // 1. Consulta SQL relacional directa en Neon (Transacciones + Clientes)
+      const dbResponse: any = await query(`
+        SELECT 
+          t.*, 
+          json_build_object(
+            'id', c.id,
+            'full_name', c.full_name,
+            'email', c.email,
+            'document_type', c.document_type,
+            'document_number', c.document_number,
+            'phone', c.phone
+          ) as clients
+        FROM public.transactions t
+        LEFT JOIN public.clients c ON t.client_id = c.id
+        ORDER BY t.created_at DESC;
+      `);
 
-      if (txError) {
-        console.error("❌ Error al obtener transacciones:", txError.message);
-        throw txError;
-      }
+      const txData = Array.isArray(dbResponse) ? dbResponse : dbResponse?.rows || [];
 
-      // 2. Mapeo estructural blindado contra valores nulos o estructuras antiguas
-      const formattedData: ClientOperation[] = (txData || []).map((tx: any) => {
+      // 2. Mapeo estructural blindado contra valores nulos
+      const formattedData: ClientOperation[] = txData.map((tx: any) => {
         const rawClient = tx.clients;
         const client = Array.isArray(rawClient) ? rawClient[0] : rawClient;
 
         return {
           ...tx,
-          // Mapeo del Remitente (Soporta tabla relacional + columnas viejas como sender_name)
           full_name: client?.full_name || tx.full_name || tx.sender_name || "Remitente no registrado",
           email: client?.email || tx.email || tx.sender_email || "Sin correo",
           document_type: client?.document_type || tx.document_type || "DNI",
           document_number: client?.document_number || tx.document_number || "S/N",
           phone: client?.phone || tx.phone || "S/N",
 
-          // Mapeo del Destinatario (Soporta receiver_name, bank_name y account)
           recipient_name: tx.recipient_name || tx.receiver_name || "Destinatario no especificado",
           recipient_bank: tx.recipient_bank || tx.bank_name || "Banco no especificado",
           recipient_account: tx.recipient_account || tx.account_number || "Sin cuenta",
@@ -106,37 +110,52 @@ export default function AdminDashboard() {
     }
   };
 
-  // Carga inicial y suscripción WebSocket para actualizaciones en vivo
+  // Conexión al stream unificado de eventos del servidor (SSE) resiliente y filtrado
   useEffect(() => {
-    fetchOperations();
+    fetchOperations(); 
 
-    const channel = supabase
-      .channel("admin_transactions_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "transactions" },
-        () => fetchOperations()
-      )
-      .subscribe();
+    const eventSource = new EventSource('/api/events');
+
+    eventSource.onmessage = (event) => {
+      if (!event.data || event.data === 'ping' || event.data === 'connected') {
+        return;
+      }
+
+      if (event.data.startsWith('update:')) {
+        const parts = event.data.split('|');
+        const targetId = parts[1];
+        const newStatus = parts[2];
+
+        if (targetId && newStatus) {
+          setOperations((prevOps) =>
+            prevOps.map((op) =>
+              op.id === targetId ? { ...op, status: newStatus as TransactionStatus } : op
+            )
+          );
+        }
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.warn("Conexión SSE pausada o reiniciando...", err);
+      if (eventSource.readyState === EventSource.CLOSED) {
+        eventSource.close();
+      }
+    };
 
     return () => {
-      supabase.removeChannel(channel);
+      eventSource.close();
     };
   }, []);
 
-  // Resetear a la página 1 cuando cambie el buscador o el filtro de estado
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter]);
 
-  // Actualización de estado en base de datos, interfaz y disparo de correo electrónico
-  // Actualización de estado en base de datos, interfaz de forma inmediata (Optimistic Update)
   const handleStatusChange = async (id: string, newStatus: TransactionStatus) => {
     setUpdatingId(id);
     setOpenDropdownId(null);
 
-    // 1. ACTUALIZACIÓN OPTIMISTA INMEDIATA EN EL FRONTEND
-    // Actualizamos tanto la lista completa como la operación seleccionada al instante para cero latencia visual
     setOperations((prev) =>
       prev.map((op) => (op.id === id ? { ...op, status: newStatus } : op))
     );
@@ -146,15 +165,12 @@ export default function AdminDashboard() {
     }
 
     try {
-      // 2. Actualizar el estado en la base de datos de Supabase
-      const { error } = await supabase
-        .from("transactions")
-        .update({ status: newStatus })
-        .eq("id", id);
+      // Actualización directa en Neon PostgreSQL
+      await query(
+        'UPDATE public.transactions SET status = $1, updated_at = NOW() WHERE id = $2',
+        [newStatus, id]
+      );
 
-      if (error) throw error;
-
-      // 3. Extraer la operación actual para enviar la notificación por correo (en segundo plano)
       const currentOp = operations.find((op) => op.id === id);
 
       if (currentOp && currentOp.email && currentOp.email !== "Sin correo") {
@@ -178,7 +194,6 @@ export default function AdminDashboard() {
     } catch (err: any) {
       console.error("❌ Error actualizando estado en BD:", err);
       alert(`Error actualizando estado: ${err.message}`);
-      // Revertir cambios locales si falla la BD recargando los datos reales
       await fetchOperations();
     } finally {
       setUpdatingId(null);
@@ -187,13 +202,13 @@ export default function AdminDashboard() {
 
   const filteredOperations = useMemo(() => {
     return operations.filter((op) => {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
-        String(op.operation_code || op.id || "").toLowerCase().includes(query) ||
-        String(op.full_name || "").toLowerCase().includes(query) ||
-        String(op.email || "").toLowerCase().includes(query) ||
-        String(op.document_number || "").toLowerCase().includes(query) ||
-        String(op.recipient_name || "").toLowerCase().includes(query);
+        String(op.operation_code || op.id || "").toLowerCase().includes(q) ||
+        String(op.full_name || "").toLowerCase().includes(q) ||
+        String(op.email || "").toLowerCase().includes(q) ||
+        String(op.document_number || "").toLowerCase().includes(q) ||
+        String(op.recipient_name || "").toLowerCase().includes(q);
 
       const matchesStatus = statusFilter === "TODOS" || op.status === statusFilter;
 
@@ -201,7 +216,6 @@ export default function AdminDashboard() {
     });
   }, [operations, searchQuery, statusFilter]);
 
-  // Lógica de Paginación sobre los elementos filtrados
   const totalPages = Math.ceil(filteredOperations.length / itemsPerPage) || 1;
   
   const paginatedOperations = useMemo(() => {
@@ -209,7 +223,6 @@ export default function AdminDashboard() {
     return filteredOperations.slice(start, start + itemsPerPage);
   }, [filteredOperations, currentPage, itemsPerPage]);
 
-  // Modificación del cálculo de métricas para separar EUR y PEN de transacciones completadas
   const stats = useMemo(() => {
     const totalCount = operations.length;
     
@@ -315,7 +328,6 @@ export default function AdminDashboard() {
 
       <main className="max-w-7xl mx-auto px-6 space-y-8 pt-6">
         
-        {/* HEADER PRINCIPAL */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
           <div>
             <h1 className="text-2xl font-black tracking-tight text-white">
@@ -329,10 +341,10 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <button
               onClick={fetchOperations}
-              disabled={loading}
+              disabled={isMounted ? loading : false}
               className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-all flex items-center gap-2 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isMounted && loading ? "animate-spin text-emerald-400" : ""}`} />
               Actualizar
             </button>
             <button
@@ -345,7 +357,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* METRICAS KPI */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl">
             <p className="text-xs font-medium text-slate-400 uppercase tracking-wider block mb-1">TOTAL TRANSACCIONES</p>
@@ -373,7 +384,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* BUSCADOR Y FILTROS */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
           <div className="relative w-full md:w-96">
             <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
@@ -392,7 +402,7 @@ export default function AdminDashboard() {
               <select
                 value={itemsPerPage}
                 onChange={(e) => {
-                  setItemPerPage(Number(e.target.value));
+                  setItemsPerPage(Number(e.target.value));
                   setCurrentPage(1);
                 }}
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-colors cursor-pointer"
@@ -421,7 +431,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TABLA PRINCIPAL */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden shadow-xl backdrop-blur-xl min-h-[420px] flex flex-col justify-between">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
@@ -548,7 +557,6 @@ export default function AdminDashboard() {
             </table>
           </div>
 
-          {/* BARRA DE PAGINACIÓN INFERIOR */}
           {!loading && filteredOperations.length > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-800/80 bg-slate-950/40 text-xs text-slate-400">
               <div>
@@ -584,7 +592,6 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* MODAL DETALLE DE OPERACIÓN */}
         {selectedOperation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-6 text-slate-200 shadow-2xl">

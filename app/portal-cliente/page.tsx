@@ -16,15 +16,13 @@ import {
   Search,
   Filter,
   Settings,
-  X,
-  Save,
-  Check,
   TrendingUp,
   HelpCircle,
   ArrowUpRight,
-  RefreshCw
+  RefreshCw,
+  ShieldAlert
 } from "lucide-react";
-import { getPortalData } from "@/app/actions/portalClient";
+import { getPortalData, updateUserProfileAndPasswordAction } from "@/app/actions/portalClient";
 
 export default function PortalClientePage() {
   const router = useRouter();
@@ -34,24 +32,58 @@ export default function PortalClientePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Estados de control para filtrado y búsqueda
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("TODOS");
 
-  // Estados para el Modal de Configuración / Perfil
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [fullNameInput, setFullNameInput] = useState("");
+  
+  const [countryCodeInput, setCountryCodeInput] = useState("+34");
   const [phoneInput, setPhoneInput] = useState("");
+
+  // Estados de Seguridad y Contraseñas
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [nameError, setNameError] = useState("");
+
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
 
-  // Estado dinámico para las tasas de cambio
   const [exchangeRates, setExchangeRates] = useState({
     eurToPen: "3.9687",
     usdToPen: "3.6841"
   });
 
-const handleSignOut = async () => {
+  // 🔒 Función para calcular la fortaleza de la contraseña en tiempo real
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return { level: 0, text: "", color: "bg-slate-800" };
+    
+    let score = 0;
+    if (pass.length >= 8) score++;
+    if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+
+    // Validar si solo tiene caracteres especiales
+    const hasAlphanumeric = /[a-zA-Z0-9]/.test(pass);
+    if (!hasAlphanumeric) {
+      return { level: 1, text: "No válida (solo símbolos)", color: "bg-rose-500" };
+    }
+
+    if (score <= 2 || pass.length < 8) {
+      return { level: 1, text: "Seguridad Baja", color: "bg-rose-500" };
+    } else if (score === 3) {
+      return { level: 2, text: "Seguridad Media", color: "bg-amber-500" };
+    } else {
+      return { level: 3, text: "Seguridad Alta", color: "bg-emerald-400" };
+    }
+  };
+
+  const passwordStrength = getPasswordStrength(newPassword);
+
+  const handleSignOut = async () => {
     await logoutAction();
   };
 
@@ -63,7 +95,11 @@ const handleSignOut = async () => {
       const response = await getPortalData();
 
       if (!response.success || !response.user) {
-        router.push("/login");
+        if (response.error === "cuenta_inhabilitada") {
+          router.push("/login?error=cuenta_inhabilitada");
+        } else {
+          router.push("/login");
+        }
         return;
       }
 
@@ -94,84 +130,74 @@ const handleSignOut = async () => {
         setProfileName(currentUser.full_name);
         setFullNameInput(currentUser.full_name);
       }
+      
       if (currentUser.phone) {
-        setPhoneInput(currentUser.phone);
+        const parts = currentUser.phone.trim().split(" ");
+        if (parts.length > 1 && parts[0].startsWith("+")) {
+          setCountryCodeInput(parts[0]);
+          setPhoneInput(parts.slice(1).join(""));
+        } else {
+          setPhoneInput(currentUser.phone);
+        }
       }
     } catch (err) {
-      console.error("❌ Error al sincronizar el portal:", err);
+      console.error("❌ Error crítico al sincronizar el portal financiero:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [router]);
 
-  // Carga inicial y sincronización en tiempo real basada en SSE (Server-Sent Events)
+  // ⚡ Sincronización en Tiempo Real Dual y Robusta
   useEffect(() => {
-    fetchPortalData(false);
+    fetchPortalData();
 
-    const eventSource = new EventSource('/api/events');
-
-    eventSource.onmessage = async (event) => {
-      if (
-        event.data === 'ping' || 
-        event.data === 'connected' || 
-        event.data === 'update' || 
-        event.data.startsWith('update:')
-      ) {
-        console.log("⚡ Señal SSE recibida! Actualizando datos...");
-        // 1. Traemos la data fresca
-        await fetchPortalData(true);
-        // 2. FUNDAMENTAL: Obligamos a Next.js a destruir su caché visual del lado del cliente
-        router.refresh(); 
+    // 1. Canal exclusivo para las Tasas de Cambio (Intacto y funcionando)
+    const ratesEventSource = new EventSource('/api/rates/stream');
+    ratesEventSource.onmessage = (event) => {
+      if (event.data === 'ping' || event.data === 'connected') return;
+      if (event.data === 'update') {
+        fetchPortalData(true);
       }
     };
+    ratesEventSource.onerror = () => ratesEventSource.close();
 
-    eventSource.onerror = (err) => {
-      console.error("⚠️ Error SSE. Reconectando...", err);
-      eventSource.close();
-      // Pequeño timeout para reconectar automáticamente si se cae la conexión
-      setTimeout(() => fetchPortalData(true), 5000); 
-    };
+    // 2. ⚡ Canal unificado de Transacciones (/api/events) compartido con el Admin
+    const txEventSource = new EventSource('/api/events');
+    txEventSource.onmessage = (event) => {
+      if (event.data === 'ping' || event.data === 'connected') return;
 
-    const handleFocus = () => {
-      fetchPortalData(true);
-      router.refresh();
+      if (event.data.startsWith('update:')) {
+        const rawData = event.data.replace('update:', '');
+        const [targetId, newStatus] = rawData.split('|');
+
+        if (targetId && newStatus) {
+          console.log(`⚡ [Portal Realtime] Orden ${targetId} actualizada a ${newStatus}`);
+          
+          // Actualización instantánea en memoria de la tabla de transferencias del cliente
+          setTransfers((prevTransfers) =>
+            prevTransfers.map((tx) =>
+              tx.id === targetId ? { ...tx, status: newStatus } : tx
+            )
+          );
+        }
+      }
     };
-    window.addEventListener("focus", handleFocus);
+    txEventSource.onerror = () => txEventSource.close();
 
     return () => {
-      eventSource.close();
-      window.removeEventListener("focus", handleFocus);
+      ratesEventSource.close();
+      txEventSource.close();
     };
-  }, [fetchPortalData, router]);
+  }, [fetchPortalData]);
 
-  const handleLogout = async () => {
-    document.cookie = "auth_token=; path=/; max-age=0;";
-    router.push("/login");
-  };
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setUpdatingProfile(true);
-    setUpdateSuccess(false);
 
-    try {
-      setProfileName(fullNameInput);
-      setUpdateSuccess(true);
-      setTimeout(() => {
-        setUpdateSuccess(false);
-        setIsProfileOpen(false);
-      }, 1500);
-    } catch (err) {
-      console.error("Error al actualizar perfil:", err);
-      alert("Hubo un error al actualizar tus datos.");
-    } finally {
-      setUpdatingProfile(false);
-    }
-  };
+  const completedTransfersCount = transfers.filter((tx) => {
+    const status = (tx.status || "").toUpperCase();
+    return status === "COMPLETADO" || status === "APROBADO";
+  }).length;
 
-  // Filtrado de transferencias en memoria local (Frontend puro)
   const filteredTransfers = transfers.filter((tx) => {
     const code = (tx.operation_code || tx.id || "").toLowerCase();
     const bank = (tx.recipient_bank || tx.bank || "").toLowerCase();
@@ -185,7 +211,7 @@ const handleSignOut = async () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
+      <div className="w-full min-h-[80vh] flex items-center justify-center">
         <div className="flex items-center gap-3 text-emerald-400 font-medium">
           <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
           <span>Cargando tu portal financiero...</span>
@@ -195,7 +221,7 @@ const handleSignOut = async () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-emerald-500 selection:text-slate-950">
+    <div className="w-full flex flex-col justify-between selection:bg-emerald-500 selection:text-slate-950">
       
       {/* Header Corporativo */}
       <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
@@ -303,7 +329,7 @@ const handleSignOut = async () => {
             <div className="grid grid-cols-2 gap-3 text-center my-auto">
               <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/50">
                 <span className="text-xs text-slate-400 block mb-1">Envíos Realizados</span>
-                <span className="text-lg font-black text-white">{transfers.length}</span>
+                <span className="text-lg font-black text-white">{completedTransfersCount}</span>
               </div>
               <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/50">
                 <span className="text-xs text-slate-400 block mb-1">Velocidad Abono</span>
@@ -426,7 +452,6 @@ const handleSignOut = async () => {
                           })()}
                         </td>
 
-                        {/* 🛡️ NUEVA CELDA: Muestra el motivo del rechazo o nota interna */}
                         <td className="py-4 px-6 font-sans">
                           {tx.internal_notes ? (
                             <span 
@@ -453,6 +478,257 @@ const handleSignOut = async () => {
           </div>
         </div>
 
+        {/* MODAL DE CONFIGURACIÓN Y PERFIL DE CLIENTE */}
+        {isProfileOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 text-slate-200 shadow-2xl animate-fadeIn my-8">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-base font-bold text-white tracking-wide">Configuración de Perfil y Seguridad</h3>
+                </div>
+                <button 
+                  onClick={() => setIsProfileOpen(false)} 
+                  className="text-slate-400 hover:text-white cursor-pointer text-sm font-bold bg-slate-800/60 p-1.5 rounded-lg transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setNameError("");
+                setPasswordError("");
+
+                const nameRegex = /^[A-Za-záéíóúÁÉÍÓÚñÑ\s]+$/;
+                if (!nameRegex.test(fullNameInput)) {
+                  setNameError("El nombre completo solo debe contener letras y espacios.");
+                  return;
+                }
+
+                // 🛡️ Validación en línea de la contraseña sin usar alert()
+                if (newPassword && newPassword.trim() !== "") {
+                  if (newPassword.length < 8) {
+                    setPasswordError("La contraseña debe tener un mínimo de 8 caracteres.");
+                    return;
+                  }
+
+                  const hasAlphanumeric = /[a-zA-Z0-9]/.test(newPassword);
+                  if (!hasAlphanumeric) {
+                    setPasswordError("La contraseña no puede estar compuesta únicamente por símbolos o caracteres especiales.");
+                    return;
+                  }
+
+                  if (newPassword !== confirmPassword) {
+                    setPasswordError("Las nuevas contraseñas no coinciden.");
+                    return;
+                  }
+                }
+
+                setUpdatingProfile(true);
+                setUpdateSuccess(false);
+
+                try {
+                  const fullPhoneNumber = `${countryCodeInput} ${phoneInput.trim()}`;
+                  const res = await updateUserProfileAndPasswordAction(
+                    fullNameInput, 
+                    fullPhoneNumber, 
+                    currentPassword || undefined, 
+                    newPassword || undefined
+                  );
+
+                  if (!res.success || !res.user) {
+                    throw new Error(res.error || "Error al actualizar perfil");
+                  }
+
+                  setUser(res.user);
+                  setProfileName(res.user.full_name);
+                  setUpdateSuccess(true);
+                  
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+
+                  setTimeout(() => {
+                    setUpdateSuccess(false);
+                    setIsProfileOpen(false);
+                  }, 1500);
+                } catch (err: any) {
+                  console.error("Error al actualizar perfil:", err);
+                  setPasswordError(err.message || "Error al actualizar credenciales.");
+                } finally {
+                  setUpdatingProfile(false);
+                }
+              }} className="space-y-4">
+                
+                {/* NOMBRE COMPLETO */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    Nombre Completo (Solo letras)
+                  </label>
+                  <input
+                    type="text"
+                    value={fullNameInput}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^A-Za-záéíóúÁÉÍÓÚñÑ\s]/g, "");
+                      setFullNameInput(val);
+                      if(nameError) setNameError("");
+                    }}
+                    required
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                  />
+                  {nameError && (
+                    <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-sans">
+                      <ShieldAlert className="w-3.5 h-3.5" /> {nameError}
+                    </p>
+                  )}
+                </div>
+
+                {/* TELÉFONO / WHATSAPP */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    Teléfono / WhatsApp
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={countryCodeInput}
+                      onChange={(e) => setCountryCodeInput(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:9px_9px] bg-[right_10px_center] bg-no-repeat pr-6"
+                    >
+                      <option value="+34" className="bg-slate-900 text-white">🇪🇸 +34</option>
+                      <option value="+51" className="bg-slate-900 text-white">🇵🇪 +51</option>
+                      <option value="+1" className="bg-slate-900 text-white">🇺🇸 +1</option>
+                      <option value="+54" className="bg-slate-900 text-white">🇦🇷 +54</option>
+                      <option value="+57" className="bg-slate-900 text-white">🇨🇴 +57</option>
+                      <option value="+56" className="bg-slate-900 text-white">🇨🇱 +56</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={phoneInput}
+                      placeholder="600123456"
+                      onChange={(e) => {
+                        const numericVal = e.target.value.replace(/\D/g, "");
+                        setPhoneInput(numericVal);
+                      }}
+                      className="col-span-2 w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* CORREO ELECTRÓNICO */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    Correo Electrónico (No modificable)
+                  </label>
+                  <input
+                    type="email"
+                    value={user?.email || ""}
+                    disabled
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-500 cursor-not-allowed font-mono"
+                  />
+                </div>
+
+                {/* SECCIÓN DE CAMBIO DE CONTRASEÑA CON INDICADOR VISUAL DE FORTALEZA */}
+                <div className="pt-3 border-t border-slate-800 space-y-3">
+                  <p className="text-xs font-bold text-emerald-400">Seguridad: Cambiar Contraseña</p>
+                  
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                      Contraseña Actual (Requerida si deseas cambiar clave)
+                    </label>
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        Nueva Contraseña
+                      </label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => {
+                          setNewPassword(e.target.value);
+                          if(passwordError) setPasswordError("");
+                        }}
+                        placeholder="Mín. 8 caracteres"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        Confirmar Clave
+                      </label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value);
+                          if(passwordError) setPasswordError("");
+                        }}
+                        placeholder="Repetir clave"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 📊 BARRA INDICADORA DE FORTALEZA DE CLAVE */}
+                  {newPassword.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex gap-1 h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+                        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 1 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
+                        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 2 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
+                        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 3 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
+                      </div>
+                      <p className="text-[10px] font-mono flex justify-between text-slate-400">
+                        <span>Nivel: <strong className={passwordStrength.level === 3 ? "text-emerald-400" : passwordStrength.level === 2 ? "text-amber-400" : "text-rose-400"}>{passwordStrength.text}</strong></span>
+                        <span>Mín. 8 caracteres (Letras, Números y Símbolos)</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 🚨 TEXTO DE ERROR EN ROJO DEBAJO DE LOS CAMPOS */}
+                  {passwordError && (
+                    <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans mt-2 bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl">
+                      <ShieldAlert className="w-4 h-4 shrink-0" /> {passwordError}
+                    </p>
+                  )}
+                </div>
+
+                {updateSuccess && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold text-center">
+                    ¡Perfil y contraseña actualizados con éxito! ✓
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingProfile}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-emerald-500/10 cursor-pointer disabled:opacity-50"
+                  >
+                    {updatingProfile ? "Guardando..." : "Guardar Cambios"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Footer corporativo */}

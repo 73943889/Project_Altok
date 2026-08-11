@@ -3,6 +3,14 @@
 
 import { query } from "@/lib/db";
 import { unstable_noStore as noStore } from 'next/cache';
+import { cookies } from 'next/headers';
+import { jwtVerify } from 'jose';
+
+if (!process.env.JWT_SECRET) {
+  throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
+}
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 interface TransactionPayload {
   user_id: string;
@@ -15,8 +23,8 @@ interface TransactionPayload {
   recipient_bank: string;
   recipient_account: string;
   bank: string;
-  transfer_commission: number; // 👈 Comisión activa
-  commission_type: 'bank' | 'wallet'; // 👈 Tipo de canal
+  transfer_commission: number;
+  commission_type: 'bank' | 'wallet';
   client_data: {
     full_name: string;
     email: string;
@@ -45,15 +53,43 @@ export async function updateTransactionBankAction(operationCode: string, bankNam
 
 export async function createTransactionAction(payload: TransactionPayload) {
   noStore();
+  
   try {
+    // 🛡️ 1. EXTRACCIÓN Y VALIDACIÓN DE SESIÓN (ZERO-TRUST)
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth_token')?.value;
+
+    if (!token) {
+      return { success: false, error: "Transacción denegada: Sesión no válida o expirada." };
+    }
+
+    const { payload: jwtPayload } = await jwtVerify(token, JWT_SECRET);
+    const email = jwtPayload.email as string;
+
+    // 🛡️ 2. BARRERA ANTI-FRAUDE EN TIEMPO REAL (Consulta a Neon)
+    const userCheck: any = await query(
+      "SELECT is_active FROM public.users WHERE email = $1 LIMIT 1",
+      [email]
+    );
+    const rows = Array.isArray(userCheck) ? userCheck : userCheck?.rows;
+    
+    // Verificamos si existe el usuario y si su estado es activo
+    const isActive = rows && rows.length > 0 && (rows[0].is_active === true || rows[0].is_active === 't' || rows[0].is_active === 1);
+
+    if (!isActive) {
+      // 🚨 USUARIO INHABILITADO: Matamos las cookies desde el servidor y bloqueamos la operación
+      cookieStore.set({ name: "auth_token", value: "", maxAge: 0, path: "/" });
+      cookieStore.set({ name: "user_email", value: "", maxAge: 0, path: "/" });
+      return { success: false, error: "TRANSACCION_DENEGADA: Tu cuenta ha sido inhabilitada por un administrador." };
+    }
+
+    // ✅ 3. LÓGICA DE NEGOCIO ORIGINAL (El usuario es legítimo y está activo)
     if (!payload.user_id || payload.send_amount <= 0) {
       return { success: false, error: "Datos de transferencia inválidos." };
     }
 
-    // Generar código de operación único
     const operationCode = `VT-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    // 1. Upsert del cliente (remitente) basado en el número de documento
     const clientQuery = `
       INSERT INTO public.clients (full_name, email, document_type, document_number, phone)
       VALUES ($1, $2, $3, $4, $5)
@@ -80,7 +116,6 @@ export async function createTransactionAction(payload: TransactionPayload) {
       return { success: false, error: "No se pudo registrar o recuperar la información del remitente." };
     }
 
-    // 2. Inserción de la transacción con los placeholders correctos ($1 hasta $13)
     const txQuery = `
       INSERT INTO public.transactions (
         user_id,
@@ -116,10 +151,11 @@ export async function createTransactionAction(payload: TransactionPayload) {
       payload.recipient_name,
       payload.recipient_bank,
       payload.recipient_account,
-      payload.bank || "Cuenta Colectora Principal", // 👈 $12: Banco receptor corporativo
-      payload.transfer_commission || 0,             // 👈 $13: Comisión
-      payload.commission_type || 'bank',            // 👈 $14: Tipo de comisión
+      payload.bank || "Cuenta Colectora Principal",
+      payload.transfer_commission || 0,
+      payload.commission_type || 'bank',
     ];
+    
     const txResult = await query(txQuery, txValues);
 
     return { 

@@ -15,6 +15,7 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  ArrowUpRight,
 } from "lucide-react";
 
 interface AdminContentProps {
@@ -29,14 +30,20 @@ export function AdminContent({ userEmail }: AdminContentProps) {
   const [selectedOperation, setSelectedOperation] = useState<ClientOperation | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [itemsPerPage] = useState<number>(10);
+  // Estado de montaje para prevenir errores de hidratación en Next.js
+  const [mounted, setMounted] = useState<boolean>(false);
 
-// 🛡️ Estados para controlar el modal personalizado de rechazo
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  //const [itemsPerPage] = useState<number>(10);
+
+  // Estados para el Modal de Rechazo con Auditoría
   const [rejectModalOpen, setRejectModalOpen] = useState<boolean>(false);
   const [transactionToRejectId, setTransactionToRejectId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState<string>("");
-
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10); // 👈 Asegúrate de que esté configurado así
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchOperations = async () => {
     setLoading(true);
@@ -62,6 +69,7 @@ export function AdminContent({ userEmail }: AdminContentProps) {
         receive_currency: tx.receive_currency || "PEN",
         operation_code: tx.operation_code || tx.id?.slice(0, 8) || "N/A",
         status: (tx.status || "PENDIENTE") as TransactionStatus,
+        internal_notes: tx.internal_notes || null,
       }));
 
       setOperations(formattedData);
@@ -72,16 +80,53 @@ export function AdminContent({ userEmail }: AdminContentProps) {
     }
   };
 
+   // ⚡ Sincronización en Tiempo Real Quirúrgica (In-Memory State Mutation - Cero Parpadeos)
   useEffect(() => {
+    // 1. Única carga inicial permitida al montar el componente
     fetchOperations();
+
+    // 2. Apertura del canal de Server-Sent Events (SSE)
+    const eventSource = new EventSource('/api/events');
+
+    eventSource.onmessage = (event) => {
+      if (event.data === 'ping' || event.data === 'connected') return;
+
+      if (event.data.startsWith('update:')) {
+        const parts = event.data.split('|');
+        const targetId = parts[1];   // ID de la transacción modificada
+        const newStatus = parts[2];  // Nuevo estado
+
+        if (targetId && newStatus) {
+          console.log(`⚡ Actualización quirúrgica en memoria (Admin) para la orden: ${targetId}`);
+          
+          // Actualizamos el estado local de forma reactiva sin tocar la bandera 'loading'
+          setOperations((prevOps) =>
+            prevOps.map((op) =>
+              op.id === targetId ? { ...op, status: newStatus } : op
+            )
+          );
+        }
+        // 🛑 NOTA CRÍTICA: Eliminamos cualquier 'fetchOperations()' dentro del SSE del Admin
+        // para evitar bucles de recarga visual en la tabla.
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }, []);
+
+
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter]);
 
   const handleStatusChange = async (id: string, newStatus: TransactionStatus) => {
-    // Si selecciona RECHAZADO, abrimos nuestro modal personalizado en vez del prompt nativo
     if (newStatus === "RECHAZADO") {
       setTransactionToRejectId(id);
       setRejectionReasonInput("");
@@ -89,18 +134,23 @@ export function AdminContent({ userEmail }: AdminContentProps) {
       return;
     }
 
-    // Para los demás estados, procesamos de forma habitual
-    await executeStatusUpdate(id, newStatus, null);
+    await executeStatusUpdate(id, newStatus, newStatus === "COMPLETADO" ? "Transacción exitosa" : null);
   };
 
   const executeStatusUpdate = async (id: string, newStatus: TransactionStatus, internalNotes: string | null) => {
     const previousOperations = [...operations];
+
+    // Actualización optimista inmediata en memoria
     setOperations((prev) =>
-      prev.map((op) => (op.id === id ? { ...op, status: newStatus } : op))
+      prev.map((op) => 
+        op.id === id 
+          ? { ...op, status: newStatus, internal_notes: internalNotes || op.internal_notes } 
+          : op
+      )
     );
 
     if (selectedOperation?.id === id) {
-      setSelectedOperation((prev) => (prev ? { ...prev, status: newStatus } : null));
+      setSelectedOperation((prev) => (prev ? { ...prev, status: newStatus, internal_notes: internalNotes || prev.internal_notes } : null));
     }
 
     setUpdatingId(id);
@@ -110,10 +160,11 @@ export function AdminContent({ userEmail }: AdminContentProps) {
       if (!res.success) {
         throw new Error(res.error || "Error al actualizar estado");
       }
-      await fetchOperations();
+      // 🚫 CERO fetches locales aquí. El cambio visual ya ocurrió al instante.
     } catch (err: any) {
+      console.error("❌ Error al actualizar en servidor:", err);
       alert(`Error actualizando estado: ${err.message}`);
-      setOperations(previousOperations);
+      setOperations(previousOperations); // Rollback de seguridad
     } finally {
       setUpdatingId(null);
     }
@@ -128,7 +179,7 @@ export function AdminContent({ userEmail }: AdminContentProps) {
     if (!transactionToRejectId) return;
 
     const id = transactionToRejectId;
-    const reason = rejectionReasonInput.trim();
+    const reason = `${rejectionReasonInput.trim()}`;
 
     setRejectModalOpen(false);
     setTransactionToRejectId(null);
@@ -167,50 +218,8 @@ export function AdminContent({ userEmail }: AdminContentProps) {
     const rejectedCount = operations.filter((o) => o.status === "RECHAZADO").length;
     const inProcessCount = operations.filter((o) => o.status === "EN_PROCESO").length;
 
-    const totalEur = completedOps
-      .filter((o) => o.send_currency === "EUR")
-      .reduce((acc, curr) => acc + curr.send_amount, 0);
-
-    const totalPen = completedOps
-      .reduce((acc, curr) => {
-        if (curr.receive_currency === "PEN") return acc + Number(curr.receive_amount || 0);
-        if (curr.send_currency === "PEN") return acc + Number(curr.send_amount || 0);
-        return acc;
-      }, 0);
-
-    return { totalCount, pendingCount, completedCount, rejectedCount, inProcessCount, totalEur, totalPen };
+    return { totalCount, pendingCount, completedCount, rejectedCount, inProcessCount };
   }, [operations]);
-
-  const exportToCSV = () => {
-    const headers = ["Codigo,Fecha,Cliente,Email,Documento,Telefono,Destinatario,Banco,Cuenta,Enviado,MonedaEnvio,Recibido,MonedaRecibo,Estado"];
-    const rows = filteredOperations.map((op) =>
-      [
-        op.operation_code || op.id,
-        new Date(op.created_at).toLocaleString(),
-        `"${op.full_name}"`,
-        op.email,
-        `${op.document_type}: ${op.document_number}`,
-        op.phone || "",
-        `"${op.recipient_name}"`,
-        op.recipient_bank,
-        `"${op.recipient_account}"`,
-        op.send_amount,
-        op.send_currency,
-        op.receive_amount,
-        op.receive_currency,
-        op.status,
-      ].join(",")
-    );
-
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Altok€_Reporte_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -243,7 +252,6 @@ export function AdminContent({ userEmail }: AdminContentProps) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
-      {/* Pasamos el correo real recibido desde el servidor a la barra de navegación */}
       <AdminNavbar userEmail={userEmail} />
 
       <main className="max-w-7xl mx-auto px-6 space-y-8 pt-6">
@@ -255,100 +263,73 @@ export function AdminContent({ userEmail }: AdminContentProps) {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={fetchOperations}
-              disabled={loading}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
-              Actualizar
-            </button>
-            <button
-              onClick={exportToCSV}
-              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Exportar CSV
-            </button>
+  onClick={fetchOperations}
+  disabled={mounted ? loading : false}
+  className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+>
+  <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
+  Actualizar
+</button>
           </div>
         </div>
 
         {/* MÉTRICAS KPI */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl flex flex-col justify-between">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Total</span>
-            <div className="flex items-baseline justify-between mt-2">
-              <span className="text-2xl sm:text-3xl font-black text-white font-mono">{stats.totalCount}</span>
-              <div className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
-            </div>
+            <span className="text-2xl font-black text-white font-mono">{stats.totalCount}</span>
           </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl flex flex-col justify-between">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl">
             <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block mb-1">Pendientes</span>
-            <div className="flex items-baseline justify-between mt-2">
-              <span className="text-2xl sm:text-3xl font-black text-amber-400 font-mono">{stats.pendingCount}</span>
-              <div className="w-2 h-2 rounded-full bg-amber-400" />
-            </div>
+            <span className="text-2xl font-black text-amber-400 font-mono">{stats.pendingCount}</span>
           </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl flex flex-col justify-between">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl">
             <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider block mb-1">En Proceso</span>
-            <div className="flex items-baseline justify-between mt-2">
-              <span className="text-2xl sm:text-3xl font-black text-blue-400 font-mono">{stats.inProcessCount}</span>
-              <div className="w-2 h-2 rounded-full bg-blue-400" />
-            </div>
+            <span className="text-2xl font-black text-blue-400 font-mono">{stats.inProcessCount}</span>
           </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl flex flex-col justify-between">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl">
             <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">Completadas</span>
-            <div className="flex items-baseline justify-between mt-2">
-              <span className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">{stats.completedCount}</span>
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-            </div>
+            <span className="text-2xl font-black text-emerald-400 font-mono">{stats.completedCount}</span>
           </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl flex flex-col justify-between col-span-2 sm:col-span-1">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl col-span-2 sm:col-span-1">
             <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider block mb-1">Rechazadas</span>
-            <div className="flex items-baseline justify-between mt-2">
-              <span className="text-2xl sm:text-3xl font-black text-rose-400 font-mono">{stats.rejectedCount}</span>
-              <div className="w-2 h-2 rounded-full bg-rose-400" />
-            </div>
+            <span className="text-2xl font-black text-rose-400 font-mono">{stats.rejectedCount}</span>
           </div>
         </div>
 
-        {/* BUSCADOR Y FILTROS */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Buscar por código, cliente o correo..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-11 pr-4 text-xs text-white outline-none focus:border-emerald-500"
-            />
-          </div>
+        {/* BUSCADOR Y FILTROS (Estilo unificado y corporativo) */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Buscar por código, cliente o correo..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-11 pr-4 text-xs text-white outline-none focus:border-emerald-500"
+              />
+            </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+            {/* 🎨 Filtro rediseñado con el mismo estilo corporativo de los selectores de la tabla */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-emerald-500 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-emerald-500/50 hover:border-emerald-400 text-xs font-semibold text-emerald-300 outline-none cursor-pointer shadow-lg transition-all"
             >
-              <option value="TODOS">Todos los estados</option>
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="EN_PROCESO">En Proceso</option>
-              <option value="COMPLETADO">Completada</option>
-              <option value="RECHAZADO">Rechazada</option>
+              <option value="TODOS" className="bg-slate-900 text-slate-200">TODOS LOS ESTADOS</option>
+              <option value="PENDIENTE" className="bg-slate-900 text-amber-400">PENDIENTE</option>
+              <option value="EN_PROCESO" className="bg-slate-900 text-sky-400">EN PROCESO</option>
+              <option value="COMPLETADO" className="bg-slate-900 text-emerald-400">COMPLETADA</option>
+              <option value="RECHAZADO" className="bg-slate-900 text-rose-400">RECHAZADA</option>
             </select>
           </div>
-        </div>
 
         {/* TABLA PRINCIPAL */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl shadow-xl backdrop-blur-xl min-h-[520px] flex flex-col justify-between">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl shadow-xl overflow-hidden min-h-[520px] flex flex-col justify-between">
           <div className="overflow-x-auto p-1">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider bg-slate-950/50 rounded-t-3xl">
+                <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider bg-slate-950/50">
                   <th className="p-4">Código / Fecha</th>
                   <th className="p-4">Remitente</th>
                   <th className="p-4">Enviado</th>
@@ -401,22 +382,25 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                             <FileText className="w-4 h-4" />
                           </button>
 
-                          <div className="relative">
-                            <select
-                              value={op.status}
-                              disabled={updatingId === op.id}
-                              onChange={(e) => handleStatusChange(op.id, e.target.value as TransactionStatus)}
-                              className="px-3 py-2 rounded-xl bg-slate-900 border border-emerald-500/50 hover:border-emerald-400 text-xs font-semibold text-emerald-300 outline-none cursor-pointer shadow-lg transition-all appearance-none pr-8"
-                            >
-                              <option value="PENDIENTE" className="bg-slate-900 text-amber-400 font-semibold">PENDIENTE</option>
-                              <option value="EN_PROCESO" className="bg-slate-900 text-sky-400 font-semibold">EN PROCESO</option>
-                              <option value="COMPLETADO" className="bg-slate-900 text-emerald-400 font-semibold">COMPLETADA</option>
-                              <option value="RECHAZADO" className="bg-slate-900 text-rose-400 font-semibold">RECHAZADA</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-emerald-400">
-                              <span className="text-[10px] font-bold">▼</span>
-                            </div>
-                          </div>
+                          <select
+                            value={op.status}
+                            disabled={updatingId === op.id}
+                            onChange={(e) => handleStatusChange(op.id, e.target.value as TransactionStatus)}
+                            className={`px-3 py-2 rounded-xl bg-slate-900 border text-xs font-semibold outline-none cursor-pointer shadow-lg transition-all ${
+                              op.status === "COMPLETADO"
+                                ? "border-emerald-500/50 hover:border-emerald-400 text-emerald-300"
+                                : op.status === "RECHAZADO"
+                                ? "border-rose-500/50 hover:border-rose-400 text-rose-300"
+                                : op.status === "EN_PROCESO"
+                                ? "border-blue-500/50 hover:border-blue-400 text-blue-300"
+                                : "border-amber-500/50 hover:border-amber-400 text-amber-300"
+                            }`}
+                          >
+                            <option value="PENDIENTE" className="bg-slate-900 text-amber-400">PENDIENTE</option>
+                            <option value="EN_PROCESO" className="bg-slate-900 text-sky-400">EN PROCESO</option>
+                            <option value="COMPLETADO" className="bg-slate-900 text-emerald-400">COMPLETADA</option>
+                            <option value="RECHAZADO" className="bg-slate-900 text-rose-400">RECHAZADA</option>
+                          </select>
                         </div>
                       </td>
                     </tr>
@@ -426,58 +410,87 @@ export function AdminContent({ userEmail }: AdminContentProps) {
             </table>
           </div>
 
-          {/* PAGINACIÓN INFERIOR */}
+         {/* PAGINACIÓN Y CONTROL DE FILAS PROFESIONAL */}
           {!loading && filteredOperations.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-800 bg-slate-950/60 text-xs text-slate-400 rounded-b-3xl mt-auto">
-              <div>
-                Mostrando <span className="font-bold text-white">{(currentPage - 1) * itemsPerPage + 1}</span> a{" "}
-                <span className="font-bold text-white">
-                  {Math.min(currentPage * itemsPerPage, filteredOperations.length)}
-                </span>{" "}
-                de <span className="font-bold text-white">{filteredOperations.length}</span> operaciones
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-800 bg-slate-950/60 text-xs text-slate-400">
+              
+              {/* Selector de cantidad de registros por página y conteo */}
+              <div className="flex items-center gap-3">
+                <span>Mostrando registros:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1); // Reiniciar a la primera página al cambiar el límite
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-emerald-500/50 hover:border-emerald-400 text-xs font-semibold text-emerald-300 outline-none cursor-pointer shadow-lg transition-all"
+                >
+                  <option value={10} className="bg-slate-900 text-slate-200">10</option>
+                  <option value={25} className="bg-slate-900 text-slate-200">25</option>
+                  <option value={50} className="bg-slate-900 text-slate-200">50</option>
+                  <option value={100} className="bg-slate-900 text-slate-200">100</option>
+                </select>
+                <span>
+                  (Del <span className="font-bold text-white">{(currentPage - 1) * itemsPerPage + 1}</span> al{" "}
+                  <span className="font-bold text-white">{Math.min(currentPage * itemsPerPage, filteredOperations.length)}</span> de{" "}
+                  <span className="font-bold text-white">{filteredOperations.length}</span>)
+                </span>
               </div>
 
+              {/* Controles de navegación de página */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <ChevronLeft className="w-4 h-4" /> Anterior
                 </button>
-
-                <div className="px-3 py-2 font-mono font-bold text-emerald-400 bg-slate-950 border border-slate-800 rounded-xl">
+                
+                <span className="px-4 py-2 font-mono font-bold text-emerald-400 bg-slate-950 border border-slate-800 rounded-xl shadow-inner">
                   {currentPage} / {totalPages}
-                </div>
+                </span>
 
                 <button
                   onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
-                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   Siguiente <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
+
             </div>
           )}
         </div>
 
-        {/* MODAL DETALLE */}
+        {/* MODAL DETALLE DE OPERACIÓN (El de la hoja / icono de archivo) */}
         {selectedOperation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-6 text-slate-200 shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                 <div>
-                  <span className="text-xs font-mono text-emerald-400 font-bold">ORDEN DE REMESA</span>
-                  <h3 className="text-xl font-bold text-white">{selectedOperation.operation_code || selectedOperation.id}</h3>
+                  <span className="text-xs font-mono text-emerald-400 font-bold">
+                    ORDEN DE REMESA
+                  </span>
+                  <h3 className="text-xl font-bold text-white">
+                    {selectedOperation.operation_code || selectedOperation.id}
+                  </h3>
                 </div>
-                <button onClick={() => setSelectedOperation(null)} className="text-slate-400 hover:text-white cursor-pointer text-lg font-bold">✕</button>
+                <button
+                  onClick={() => setSelectedOperation(null)}
+                  className="text-slate-400 hover:text-white cursor-pointer text-lg font-bold"
+                >
+                  ✕
+                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div className="space-y-1 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
                   <p className="text-slate-500 font-semibold uppercase tracking-wider mb-2">REMITENTE</p>
-                  <p className="font-bold text-white text-sm">{selectedOperation.full_name}</p>
+                  <p className="font-bold text-white text-sm">
+                    {selectedOperation.full_name}
+                  </p>
                   <p className="text-slate-400">{selectedOperation.email}</p>
                   <p className="text-slate-400">{selectedOperation.phone}</p>
                   <p className="text-slate-400 font-mono mt-1 pt-1 border-t border-slate-800/80">
@@ -495,10 +508,26 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                 </div>
               </div>
 
+              <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-center justify-between font-mono text-sm">
+                <div>
+                  <span className="text-xs text-slate-400 block">ENVIADO:</span>
+                  <span className="font-bold text-white text-base">
+                    {selectedOperation.send_amount} {selectedOperation.send_currency}
+                  </span>
+                </div>
+                <ArrowUpRight className="w-6 h-6 text-emerald-400" />
+                <div className="text-right">
+                  <span className="text-xs text-slate-400 block">A ABONAR:</span>
+                  <span className="font-bold text-emerald-400 text-base">
+                    {selectedOperation.receive_amount} {selectedOperation.receive_currency}
+                  </span>
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                 <button
                   onClick={() => setSelectedOperation(null)}
-                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition-colors cursor-pointer"
                 >
                   Cerrar Ventana
                 </button>
@@ -507,55 +536,51 @@ export function AdminContent({ userEmail }: AdminContentProps) {
           </div>
         )}
 
-        {/* 🛡️ MODAL PROFESIONAL DE RECHAZO */}
+        {/* MODAL DE RECHAZO (Diseño Corporativo y Pulido) */}
         {rejectModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-            <div className="w-full max-w-md rounded-2xl bg-[#0f172a] border border-slate-800 p-6 space-y-5 text-slate-200 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
-                  <h3 className="text-base font-bold text-white tracking-wide">Motivo de Rechazo</h3>
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 text-slate-200 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                    <XCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white tracking-wide">Motivo de Rechazo</h3>
+                    <p className="text-[11px] text-slate-400">Esta observación se notificará al cliente.</p>
+                  </div>
                 </div>
                 <button 
-                  onClick={() => {
-                    setRejectModalOpen(false);
-                    setTransactionToRejectId(null);
-                  }} 
-                  className="text-slate-400 hover:text-white cursor-pointer text-sm font-bold bg-slate-800/60 p-1.5 rounded-lg transition-colors"
+                  onClick={() => setRejectModalOpen(false)} 
+                  className="text-slate-400 hover:text-white cursor-pointer text-xs font-bold bg-slate-800/60 p-2 rounded-xl transition-colors"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="space-y-3">
-                <p className="text-xs text-slate-400">
-                  Por favor, ingrese el motivo detallado del rechazo. Esta nota se registrará en el sistema para auditoría interna:
-                </p>
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Detalle del Motivo
+                </label>
                 <textarea
-                  rows={3}
+                  rows={4}
                   value={rejectionReasonInput}
                   onChange={(e) => setRejectionReasonInput(e.target.value)}
-                  placeholder="Ej. Comprobante ilegible o monto transferido no coincide..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white outline-none focus:border-rose-500 transition-all resize-none font-sans shadow-inner"
-                  autoFocus
+                  placeholder="Ej. Comprobante ilegible, monto no coincide con la transferencia..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-rose-500 transition-all resize-none shadow-inner"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRejectModalOpen(false);
-                    setTransactionToRejectId(null);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800/80">
+                <button 
+                  onClick={() => setRejectModalOpen(false)} 
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
-                <button
-                  type="button"
-                  onClick={confirmRejection}
-                  className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-rose-500/10 cursor-pointer"
+                <button 
+                  onClick={confirmRejection} 
+                  className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-rose-500/20 cursor-pointer"
                 >
                   Confirmar Rechazo
                 </button>

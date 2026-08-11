@@ -18,7 +18,9 @@ export async function GET() {
       )`
     );
     
-    return NextResponse.json(result.rows || result, {
+    const rows = result.rows || result;
+    
+    return NextResponse.json(rows || [], {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',

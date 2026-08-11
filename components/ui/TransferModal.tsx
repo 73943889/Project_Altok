@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createTransactionAction, updateTransactionBankAction } from "@/app/actions/transaction";
+import { ShieldAlert } from "lucide-react";
 
 interface TransferModalProps {
   isOpen: boolean;
@@ -90,9 +92,9 @@ const CORPORATE_COLLECTOR_ACCOUNTS: Record<string, CollectorAccount[]> = {
   ],
   EUR: [
     { id: "BBVA_ES", name: "BBVA España (IBAN)", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
-     { id: "CaixaBank", name: "CaixaBank", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
-      { id: "Santander", name: "Santander", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
-       { id: "Sabadell", name: "Banco Sabadell", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
+    { id: "CaixaBank", name: "CaixaBank", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
+    { id: "Santander", name: "Santander", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
+    { id: "Sabadell", name: "Banco Sabadell", type: "IBAN", accountNumber: "ES91 0182 2345 99 0123456789", holder: "Altok€ SAC" },
     { id: "Bizum", name: "Bizum corporativo", type: "Wallet", accountNumber: "+34 600 123 456", holder: "Altok€ SAC" },
   ],
   USD: [
@@ -148,6 +150,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   userEmail,
   userFullName,
 }) => {
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [operationCode, setOperationCode] = useState("");
@@ -164,20 +167,34 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   const countryCodeDropdownRef = useRef<HTMLDivElement>(null);
   const docTypeDropdownRef = useRef<HTMLDivElement>(null);
 
+  // 🛡️ Referencias de DOM para enfocar automáticamente el campo con error
+  const documentNumberInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const recipientAccountInputRef = useRef<HTMLInputElement>(null);
+
+  // 🛡️ Estados para Errores Inline (debajo de cada campo)
+  const [formErrors, setFormErrors] = useState<{
+    documentType?: string;
+    documentNumber?: string;
+    countryCode?: string;
+    phone?: string;
+    recipientDestinationId?: string;
+    recipientAccount?: string;
+    general?: string;
+  }>({});
+
   // 🛡️ Estado global seguro para el feedback de copia
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // 🛡️ Estado para registrar la cuenta recaudadora elegida al copiar (Inicia en null sin preselección)
+  // 🛡️ Estado para registrar la cuenta recaudadora elegida al copiar
   const [selectedCollectorAccount, setSelectedCollectorAccount] = useState<CollectorAccount | null>(null);
 
-  // 🛡️ Sincronización limpia: Mantiene la selección limpia al iniciar el panel de pago sin preseleccionar nada por defecto
   useEffect(() => {
     if (!isCompleted) {
       setSelectedCollectorAccount(null);
     }
   }, [sendCurrency, formData.destinationType, isCompleted]);
 
-  // 🛡️ Función handleCopy optimizada para actualizar la BD si la orden ya fue creada
   const handleCopy = async (textToCopy: string, fieldKey: string, accountObj: CollectorAccount) => {
     try {
       await navigator.clipboard.writeText(textToCopy);
@@ -221,6 +238,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
         maternalSurname: mSurname || prev.maternalSurname,
         email: userEmail || prev.email,
       }));
+      setFormErrors({});
     }
   }, [isOpen, userFullName, userEmail]);
 
@@ -248,17 +266,10 @@ export const TransferModal: React.FC<TransferModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-
     fetchCommissions();
-
-    const handleFocus = () => {
-      fetchCommissions();
-    };
-
+    const handleFocus = () => fetchCommissions();
     window.addEventListener("focus", handleFocus);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-    };
+    return () => window.removeEventListener("focus", handleFocus);
   }, [isOpen]);
 
   const filteredDestinations = DESTINATION_OPTIONS.filter(
@@ -299,6 +310,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     setOperationCode("");
     setIsCompleted(false);
     setIsSubmitting(false);
+    setFormErrors({});
     setIsDestinationOpen(false);
     setIsCountryCodeOpen(false);
     setIsDocTypeOpen(false);
@@ -315,27 +327,56 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    
+    if (formErrors[e.target.name as keyof typeof formErrors]) {
+      setFormErrors({ ...formErrors, [e.target.name]: undefined });
+    }
   };
 
+  // 🛡️ VALIDACIÓN EN LÍNEA Y AUTO-FOCUS CON PREVENCIÓN DE ALERTAS NATIVAS
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errors: typeof formErrors = {};
+
     if (!formData.documentType) {
-      alert("Por favor selecciona un tipo de documento.");
-      return;
+      errors.documentType = "Por favor selecciona un tipo de documento.";
+    }
+    if (!formData.documentNumber.trim()) {
+      errors.documentNumber = "Por favor ingresa tu número de documento.";
     }
     if (!formData.countryCode) {
-      alert("Por favor selecciona un código de teléfono.");
-      return;
+      errors.countryCode = "Por favor selecciona un código de teléfono.";
+    }
+    if (!formData.phone.trim()) {
+      errors.phone = "Por favor ingresa tu número de teléfono.";
     }
     if (!formData.recipientDestinationId) {
-      alert("Por favor selecciona una entidad de destino válida.");
+      errors.recipientDestinationId = "Por favor selecciona una entidad de destino válida.";
+    }
+    if (!formData.recipientAccount.trim()) {
+      errors.recipientAccount = "Por favor ingresa el número de cuenta o celda de destino.";
+    }
+
+    setFormErrors(errors);
+
+    // Si existen errores, aplicamos auto-focus en el primer campo faltante
+    if (Object.keys(errors).length > 0) {
+      if (errors.documentType || errors.documentNumber) {
+        documentNumberInputRef.current?.focus();
+      } else if (errors.countryCode || errors.phone) {
+        phoneInputRef.current?.focus();
+      } else if (errors.recipientDestinationId || errors.recipientAccount) {
+        recipientAccountInputRef.current?.focus();
+      }
       return;
     }
+
     setIsSubmitting(true);
 
     try {
       if (!userId) {
-        alert("Debes iniciar sesión para realizar una transferencia.");
+        setFormErrors({ general: "Debes iniciar sesión para realizar una transferencia." });
         setIsSubmitting(false);
         return;
       }
@@ -384,6 +425,12 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       });
 
       if (!result.success) {
+        if (result.error && result.error.includes("TRANSACCION_DENEGADA")) {
+          onClose();
+          router.push('/login?error=cuenta_inhabilitada');
+          router.refresh();
+          return;
+        }
         throw new Error(result.error || "Error al procesar la orden.");
       }
 
@@ -391,7 +438,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       setIsCompleted(true);
     } catch (err: any) {
       console.error("Error crítico al procesar transferencia:", err);
-      alert(`Error inesperado al procesar: ${err.message || err}`);
+      setFormErrors({ general: err.message || "Error inesperado al procesar la solicitud." });
     } finally {
       setIsSubmitting(false);
     }
@@ -416,7 +463,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     const selectedDestObj = DESTINATION_OPTIONS.find((d) => d.id === formData.recipientDestinationId);
 
     const lines = [
-      "¡Hola Altok€ Transfer!",
+      "¡Hola Altok€!",
       `Acabo de generar la orden de transferencia *${operationCode}*.`,
       "",
       "*Detalles del Envío:*",
@@ -490,6 +537,14 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                 Enviarás {sendAmount} {sendCurrency} para abonar {receiveAmount} {receiveCurrency}
               </p>
 
+              {/* Error General de Servidor/Sesión */}
+              {formErrors.general && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{formErrors.general}</span>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold text-emerald-400 tracking-wider uppercase">
                   1. Tus Datos (Remitente)
@@ -548,6 +603,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   />
                 </div>
 
+                {/* TIPO DE DOCUMENTO Y NÚMERO */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="relative" ref={docTypeDropdownRef}>
                     <button
@@ -572,6 +628,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                             onClick={() => {
                               setFormData({ ...formData, documentType: item.id });
                               setIsDocTypeOpen(false);
+                              if (formErrors.documentType) setFormErrors({ ...formErrors, documentType: undefined });
                             }}
                             className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
                               formData.documentType === item.id
@@ -588,16 +645,25 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   </div>
 
                   <input
+                    ref={documentNumberInputRef}
                     type="text"
                     name="documentNumber"
                     placeholder="N° Documento"
-                    required
                     value={formData.documentNumber}
                     onChange={handleChange}
                     className="col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm focus:border-emerald-500 outline-none"
                   />
                 </div>
 
+                {/* ERROR INLINE DOCUMENTO */}
+                {(formErrors.documentType || formErrors.documentNumber) && (
+                  <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans">
+                    <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                    {formErrors.documentType || formErrors.documentNumber}
+                  </p>
+                )}
+
+                {/* TELÉFONO / CÓDIGO DE PAÍS */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-300 block">
                     Teléfono / WhatsApp de Contacto
@@ -626,6 +692,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                               onClick={() => {
                                 setFormData({ ...formData, countryCode: item.code });
                                 setIsCountryCodeOpen(false);
+                                if (formErrors.countryCode) setFormErrors({ ...formErrors, countryCode: undefined });
                               }}
                               className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
                                 formData.countryCode === item.code
@@ -643,10 +710,10 @@ export const TransferModal: React.FC<TransferModalProps> = ({
 
                     <div className="relative flex-1">
                       <input
+                        ref={phoneInputRef}
                         type="tel"
                         name="phone"
                         placeholder="600123456 / 999888777"
-                        required
                         value={formData.phone}
                         onInput={(e) => {
                           const target = e.target as HTMLInputElement;
@@ -663,6 +730,14 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* ERROR INLINE TELÉFONO */}
+                {(formErrors.countryCode || formErrors.phone) && (
+                  <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans">
+                    <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                    {formErrors.countryCode || formErrors.phone}
+                  </p>
+                )}
 
                 {/* 2. DATOS DEL DESTINATARIO */}
                 <h3 className="text-xs font-semibold text-emerald-400 tracking-wider uppercase pt-2">
@@ -762,6 +837,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                               onClick={() => {
                                 setFormData({ ...formData, recipientDestinationId: item.id });
                                 setIsDestinationOpen(false);
+                                if (formErrors.recipientDestinationId) setFormErrors({ ...formErrors, recipientDestinationId: undefined });
                               }}
                               className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
                                 formData.recipientDestinationId === item.id
@@ -783,33 +859,40 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     </div>
 
                     <input
-                    type="text"
-                    name="recipientAccount"
-                    placeholder={
-                      formData.destinationType === "bank"
-                        ? "N° Cuenta / IBAN / CCI"
-                        : "N° Celular / Wallet"
-                    }
-                    required
-                    minLength={9}
-                    maxLength={34}
-                    value={formData.recipientAccount}
-                    onChange={(e) => {
-                      const value = e.target.value
-                        .toUpperCase()
-                        .replace(/[^A-Z0-9]/g, "");
+                      ref={recipientAccountInputRef}
+                      type="text"
+                      name="recipientAccount"
+                      placeholder={
+                        formData.destinationType === "bank"
+                          ? "N° Cuenta / IBAN / CCI"
+                          : "N° Celular / Wallet"
+                      }
+                      minLength={9}
+                      maxLength={34}
+                      value={formData.recipientAccount}
+                      onChange={(e) => {
+  const value = e.target.value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
 
-                      handleChange({
-                        target: {
-                          name: "recipientAccount",
-                          value,
-                        },
-                      });
-                    }}
-                    className="col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm focus:border-emerald-500 outline-none"
-                  />
-
+  handleChange({
+    target: {
+      name: "recipientAccount",
+      value,
+    },
+  } as unknown as React.ChangeEvent<HTMLInputElement>); // 👈 Solución aplicada
+}}
+                      className="col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm focus:border-emerald-500 outline-none"
+                    />
                   </div>
+
+                  {/* ERROR INLINE DESTINO Y CUENTA */}
+                  {(formErrors.recipientDestinationId || formErrors.recipientAccount) && (
+                    <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans">
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                      {formErrors.recipientDestinationId || formErrors.recipientAccount}
+                    </p>
+                  )}
 
                   {/* 🏷️ LABEL DE COMISIÓN DINÁMICO EN TIEMPO REAL */}
                   <div className="flex justify-between items-center px-1 pt-1 text-[11px] font-medium text-slate-400">

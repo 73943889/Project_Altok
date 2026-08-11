@@ -26,7 +26,7 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
   const router = useRouter();
   const session = initialSession;
 
-  const [originCurrency, setOriginCurrency] = useState<OriginCurrency>("EUR");
+  const [originCurrency, setOriginCurrency] = useState<OriginCurrency>("USD");
   const [isSendingOrigin, setIsSendingOrigin] = useState(true); 
   const [sendAmount, setSendAmount] = useState<string>("100");
   
@@ -38,11 +38,11 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
   const [loadingTasa, setLoadingTasa] = useState<boolean>(true);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
 
-  const fetchTasaActiva = async (isInitial = false) => {
+  // 🚀 Función optimizada que actualiza estados y recalcula de inmediato
+  const fetchTasaActiva = async () => {
     try {
-      if (isInitial) setLoadingTasa(true);
-
-      const response = await fetch('/api/rates');
+      setLoadingTasa(true);
+      const response = await fetch('/api/rates', { cache: 'no-store' });
       if (!response.ok) throw new Error("Error al obtener tasas");
       
       const data = await response.json();
@@ -58,16 +58,34 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
         });
       }
     } catch (err) {
-      console.error("Error al obtener la tasa desde el servidor:", err);
+      console.error("Error al obtener la tasa:", err);
     } finally {
-      if (isInitial) setLoadingTasa(false);
+      setLoadingTasa(false);
     }
   };
 
   useEffect(() => {
-    fetchTasaActiva(true);
-    const intervalId = setInterval(() => fetchTasaActiva(false), 15000);
-    return () => clearInterval(intervalId);
+    // 1. Carga inicial
+    fetchTasaActiva();
+
+    // 2. Conexión pasiva en tiempo real vía Server-Sent Events (Cero polling a la BD)
+    const eventSource = new EventSource('/api/rates/stream');
+    
+    eventSource.onmessage = (event) => {
+      if (event.data === 'update') {
+        // Refrescamos las tasas inmediatamente desde el servidor sin tocar F5
+        fetchTasaActiva();
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("Error en la conexión SSE:", err);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }, []);
 
   const activeBuyRate = originCurrency === "EUR" ? buyRateEur : buyRateUsd;
@@ -104,14 +122,28 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
     }
   };
 
-  // Extraemos de forma segura los datos de sesión para pasarlos al modal
   const userId = session?.user?.id || session?.userId;
   const userEmail = session?.user?.email || session?.email || "";
   const userFullName = initialProfileName || session?.user?.full_name || session?.full_name || "";
 
+  // 🎨 Sistema de Identidad Cromática Dinámica & Micro-Corredor Integrado
+  const isEur = originCurrency === "EUR";
+  
+  const theme = {
+    borderGlow: isEur ? "border-blue-500/50 shadow-blue-500/10" : "border-emerald-500/50 shadow-emerald-500/10",
+    textAccent: isEur ? "text-blue-400" : "text-emerald-400",
+    bgBadge: isEur ? "bg-blue-500/10 border-blue-500/20 text-blue-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300",
+    dotPulse: isEur ? "bg-blue-400" : "bg-emerald-400",
+    corridorFlag: isEur ? "🇪🇸" : "🇺🇸",
+    corridorShort: isEur ? "Envío directo desde Europa a Perú" : "Envío directo desde EE.UU. a Perú",
+    buttonBg: isEur 
+      ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/25 hover:from-blue-500 hover:to-indigo-500" 
+      : "bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-emerald-500/25 hover:opacity-95",
+  };
+
   return (
     <>
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20 grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
         <div className="lg:col-span-7 space-y-8">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">
             <ShieldCheck className="w-4 h-4" /> Plataforma Financiera Regulada Perú ⇄ España ⇄ EE.UU.
@@ -158,118 +190,132 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
           </div>
         </div>
 
-        <div id="calculadora" className="lg:col-span-5 bg-[#0b101d] border border-slate-800/80 rounded-3xl p-6 sm:p-7 backdrop-blur-xl shadow-2xl relative">
-          <div className="space-y-5">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800/80">
-              <div>
-                <h3 className="text-base sm:text-lg font-black text-white tracking-tight">Calculadora de Envíos</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Tasa en tiempo real y garantizada</p>
+        {/* 🧮 Calculadora Compacta con Ancho Exacto (max-w-[410px]) y Corredor Integrado */}
+        <div className="lg:col-span-5 flex justify-center lg:justify-end">
+          <div 
+            id="calculadora" 
+            className={`w-full max-w-[410px] h-fit bg-[#0b101d] border rounded-2xl p-5 sm:p-6 backdrop-blur-xl shadow-2xl relative transition-all duration-300 scroll-mt-28 ${theme.borderGlow}`}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80">
+                <div>
+                  <h3 className="text-base font-black text-white tracking-tight">Calculadora de Envíos</h3>
+                  <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold mt-1 border ${theme.bgBadge}`}>
+                    <span>{theme.corridorFlag}</span>
+                    <span>{theme.corridorShort}</span>
+                  </div>
+                </div>
+                
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 self-start">
+                  {(["EUR", "USD"] as OriginCurrency[]).map((cur) => {
+                    const active = originCurrency === cur;
+                    return (
+                      <button
+                        key={cur}
+                        type="button"
+                        onClick={() => setOriginCurrency(cur)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          active
+                            ? cur === "EUR"
+                              ? "bg-blue-600 text-white shadow-sm"
+                              : "bg-emerald-500 text-slate-950 shadow-sm"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {cur}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              
-              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                {(["EUR", "USD"] as OriginCurrency[]).map((cur) => (
-                  <button
-                    key={cur}
-                    type="button"
-                    onClick={() => setOriginCurrency(cur)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                      originCurrency === cur
-                        ? "bg-emerald-500 text-slate-950 shadow-sm"
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {cur}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <div className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 flex items-center justify-between shadow-inner">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Tasa de referencia:</span>
-              </span>
-              <span>
-                {loadingTasa 
-                  ? "Cargando..." 
-                  : isSendingOrigin 
-                    ? `1 ${originCurrency} = ${activeBuyRate.toFixed(4)} PEN` 
-                    : `1 PEN = ${(1 / activeSellRate).toFixed(4)} ${originCurrency}`}
-              </span>
-            </div>
-
-            <div className="bg-[#070a13] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-              <div className="space-y-1.5 w-full">
-                <label className="text-[10px] font-extrabold text-slate-400 block tracking-wider uppercase">
-                  {isSendingOrigin ? `TÚ ENVÍAS DESDE ${originCurrency}` : "TÚ ENVÍAS DESDE PERÚ"}
-                </label>
-                <input 
-                  type="text"
-                  inputMode="decimal"
-                  value={sendAmount}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (/^\d*\.?\d*$/.test(val)) setSendAmount(val);
-                  }}
-                  className="w-full bg-transparent text-white font-mono text-xl sm:text-2xl font-bold focus:outline-none"
-                />
+              <div className={`text-[11px] font-mono font-bold px-3 py-1.5 rounded-xl border flex items-center justify-between shadow-inner ${theme.bgBadge}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${theme.dotPulse}`}></span>
+                  <span>Tasa de referencia:</span>
+                </span>
+                <span>
+                  {loadingTasa 
+                    ? "Cargando..." 
+                    : isSendingOrigin 
+                      ? `1 ${originCurrency} = ${activeBuyRate.toFixed(4)} PEN` 
+                      : `1 PEN = ${(1 / activeSellRate).toFixed(4)} ${originCurrency}`}
+                </span>
               </div>
-              <div className="text-emerald-400 font-extrabold text-xs bg-[#0b101d] px-3.5 py-2.5 rounded-xl border border-slate-800 text-center shrink-0 ml-3">
-                {isSendingOrigin ? originCurrency : "PEN"}
-              </div>
-            </div>
 
-            <div className="flex justify-center -my-4 relative z-10">
+              <div className="bg-[#070a13] border border-slate-800/90 rounded-xl p-3.5 flex items-center justify-between shadow-sm">
+                <div className="space-y-1 w-full">
+                  <label className="text-[10px] font-extrabold text-slate-400 block tracking-wider uppercase">
+                    {isSendingOrigin ? `TÚ ENVÍAS DESDE ${originCurrency}` : "TÚ ENVÍAS DESDE PERÚ"}
+                  </label>
+                  <input 
+                    type="text"
+                    inputMode="decimal"
+                    value={sendAmount}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (/^\d*\.?\d*$/.test(val)) setSendAmount(val);
+                    }}
+                    className="w-full bg-transparent text-white font-mono text-xl font-bold focus:outline-none"
+                  />
+                </div>
+                <div className={`font-extrabold text-xs bg-[#0b101d] px-3 py-2 rounded-xl border border-slate-800 text-center shrink-0 ml-3 ${theme.textAccent}`}>
+                  {isSendingOrigin ? originCurrency : "PEN"}
+                </div>
+              </div>
+
+              <div className="flex justify-center -my-3.5 relative z-10">
+                <button 
+                  type="button"
+                  onClick={handleToggleCurrencyDirection}
+                  title="Invertir dirección"
+                  className={`w-7 h-7 rounded-full bg-[#0b101d] border border-slate-800 hover:border-emerald-500 flex items-center justify-center shadow-lg hover:scale-110 transition-all cursor-pointer ${theme.textAccent}`}
+                >
+                  <ArrowRightLeft className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="bg-[#070a13] border border-slate-800/90 rounded-xl p-3.5 flex items-center justify-between shadow-sm">
+                <div className="space-y-1 w-full">
+                  <label className="text-[10px] font-extrabold text-slate-400 block tracking-wider uppercase">
+                    {isSendingOrigin ? "EL DESTINATARIO RECIBE EN PERÚ" : `EL DESTINATARIO RECIBE EN ${originCurrency}`}
+                  </label>
+                  <input 
+                    disabled
+                    type="text"
+                    value={receiveAmount}
+                    className={`w-full bg-transparent font-mono text-xl font-black focus:outline-none ${theme.textAccent}`}
+                  />
+                </div>
+                <div className={`font-extrabold text-xs bg-[#0b101d] px-3 py-2 rounded-xl border border-slate-800 text-center shrink-0 ml-3 ${theme.textAccent}`}>
+                  {isSendingOrigin ? "PEN" : originCurrency}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 pt-1 text-xs text-slate-400 px-1">
+                <div className="flex justify-between">
+                  <span>Comisión de transferencia:</span>
+                  <span className={`font-bold ${theme.textAccent}`}>0.00 {originCurrency} (¡Gratis!)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tiempo estimado de abono:</span>
+                  <span className="text-white font-semibold">00 - 05 minutos</span>
+                </div>
+              </div>
+
               <button 
                 type="button"
-                onClick={handleToggleCurrencyDirection}
-                title="Invertir dirección"
-                className="w-8 h-8 rounded-full bg-[#0b101d] border border-slate-800 hover:border-emerald-500 flex items-center justify-center text-emerald-400 shadow-lg hover:scale-110 transition-all cursor-pointer"
+                onClick={handleStartTransfer}
+                className={`w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer ${theme.buttonBg}`}
               >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Iniciar Transferencia</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
+
+              <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1.5 pt-0.5">
+                <Lock className={`w-3 h-3 ${theme.textAccent}`} /> Transacción protegida con encriptación bancaria.
+              </p>
             </div>
-
-            <div className="bg-[#070a13] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-              <div className="space-y-1.5 w-full">
-                <label className="text-[10px] font-extrabold text-slate-400 block tracking-wider uppercase">
-                  {isSendingOrigin ? "EL DESTINATARIO RECIBE EN PERÚ" : `EL DESTINATARIO RECIBE EN ${originCurrency}`}
-                </label>
-                <input 
-                  disabled
-                  type="text"
-                  value={receiveAmount}
-                  className="w-full bg-transparent text-emerald-400 font-mono text-xl sm:text-2xl font-black focus:outline-none"
-                />
-              </div>
-              <div className="text-emerald-400 font-extrabold text-xs bg-[#0b101d] px-3.5 py-2.5 rounded-xl border border-slate-800 text-center shrink-0 ml-3">
-                {isSendingOrigin ? "PEN" : originCurrency}
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-1 text-xs text-slate-400 px-1">
-              <div className="flex justify-between">
-                <span>Comisión de transferencia:</span>
-                <span className="text-emerald-400 font-bold">0.00 {originCurrency} (¡Gratis!)</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tiempo estimado de abono:</span>
-                <span className="text-white font-semibold">00 - 05 minutos</span>
-              </div>
-            </div>
-
-            <button 
-              type="button"
-              onClick={handleStartTransfer}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-extrabold text-sm hover:opacity-95 transition-all shadow-xl shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>Iniciar Transferencia</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-
-            <p className="text-[11px] text-slate-500 text-center flex items-center justify-center gap-1.5 pt-1">
-              <Lock className="w-3 h-3 text-emerald-400" /> Transacción protegida con encriptación bancaria.
-            </p>
           </div>
         </div>
       </main>
@@ -284,7 +330,6 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
         <SupportSection />
       </section>
 
-      {/* 🚀 Modal de Transferencia con datos precargados del usuario logueado */}
       <TransferModal
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}

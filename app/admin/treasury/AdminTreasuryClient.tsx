@@ -13,7 +13,7 @@ import {
   Euro
 } from "lucide-react";
 
-export default function TreasuryClient({ initialOperations }: { initialOperations: ClientOperation[] }) {
+export default function TreasuryClient({ initialOperations,userEmail }: { initialOperations: ClientOperation[]; userEmail?: string }) {
   const [operations, setOperations] = useState<ClientOperation[]>(initialOperations);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -42,27 +42,27 @@ const financialMetrics = useMemo(() => {
     console.log("Operaciones detectadas para tesorería:", activeOps);
 
     const inflowsEur = activeOps
-      .filter((o) => o.send_currency === "EUR")
+      .filter((o) => (o.send_currency as string) === "EUR")
       .reduce((acc, curr) => acc + Number(curr.send_amount || 0), 0);
 
     const inflowsUsd = activeOps
-      .filter((o) => o.send_currency === "USD")
+      .filter((o) => (o.send_currency as string) === "USD")
       .reduce((acc, curr) => acc + Number(curr.send_amount || 0), 0);
 
     const inflowsPen = activeOps
-      .filter((o) => o.send_currency === "PEN")
+      .filter((o) => (o.send_currency as string) === "PEN")
       .reduce((acc, curr) => acc + Number(curr.send_amount || 0), 0);
 
     const outflowsPen = activeOps
-      .filter((o) => o.receive_currency === "PEN")
+      .filter((o) => (o.receive_currency as string) === "PEN")
       .reduce((acc, curr) => acc + Number(curr.receive_amount || 0), 0);
 
     const outflowsUsd = activeOps
-      .filter((o) => o.receive_currency === "USD")
+      .filter((o) => (o.receive_currency as string) === "USD")
       .reduce((acc, curr) => acc + Number(curr.receive_amount || 0), 0);
 
     const outflowsEur = activeOps
-      .filter((o) => o.receive_currency === "EUR")
+      .filter((o) => (o.receive_currency as string) === "EUR")
       .reduce((acc, curr) => acc + Number(curr.receive_amount || 0), 0);
 
     return {
@@ -78,7 +78,8 @@ const financialMetrics = useMemo(() => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
-      <AdminNavbar />
+      {/* 2. Le inyectamos el prop userEmail al Navbar */}
+      <AdminNavbar userEmail={userEmail} />
 
       <main className="max-w-7xl mx-auto px-6 space-y-8 pt-6">
         

@@ -3,6 +3,7 @@
 
 import { query } from '@/lib/db';
 import { unstable_noStore as noStore } from 'next/cache';
+import { notifyClientsRateChanged } from '@/app/api/rates/stream/route';
 
 export async function getRatesAction() {
   noStore();
@@ -20,7 +21,6 @@ export async function updateRatesAction(updates: { key: string; value: number }[
   noStore();
   try {
     for (const item of updates) {
-      // 1. Guardar la llave específica solicitada (ej. transfer_commission_bank o transfer_commission_wallet)
       await query(
         `INSERT INTO public.site_config (key, value, updated_at) 
          VALUES ($1, $2, NOW()) 
@@ -29,18 +29,20 @@ export async function updateRatesAction(updates: { key: string; value: number }[
         [item.key, item.value]
       );
 
-      // 2. 🛡️ Patrón de Respaldo Automático (Fallback Mirroring):
-      // Si actualizan el banco, replicamos también en la llave genérica 'transfer_commission' para compatibilidad retroactiva total.
       if (item.key === 'transfer_commission_bank') {
         await query(
           `INSERT INTO public.site_config (key, value, updated_at) 
-           VALUES ('transfer_commission', $1, NOW()) 
+           VALUES ('transfer_commission', $2, NOW()) 
            ON CONFLICT (key) 
-           DO UPDATE SET value = $1, updated_at = NOW()`,
-          [item.value]
+           DO UPDATE SET value = $2, updated_at = NOW()`,
+          ['transfer_commission', item.value]
         );
       }
     }
+
+    // 🔄 Notificamos al stream en tiempo real de forma inmediata y limpia
+    notifyClientsRateChanged();
+
     return { success: true };
   } catch (err: any) {
     console.error('Error al actualizar tasas y comisiones:', err);
