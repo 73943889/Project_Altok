@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import { query } from "@/lib/db";
 import { redirect } from "next/navigation";
-// ... tus otros imports (fuentes, css, etc.)
 
 if (!process.env.JWT_SECRET) {
   throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
@@ -18,7 +17,6 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value;
 
-  // Si hay token, verificamos globalmente que la cuenta no haya sido inhabilitada
   if (token) {
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET);
@@ -30,18 +28,19 @@ export default async function RootLayout({
       );
       const rows = Array.isArray(res) ? res : res?.rows;
 
-      const isActive = rows && rows.length > 0 && (rows[0].is_active === true || rows[0].is_active === 't' || rows[0].is_active === 1);
+      const isActive =
+        rows &&
+        rows.length > 0 &&
+        (rows[0].is_active === true ||
+          rows[0].is_active === "t" ||
+          rows[0].is_active === 1);
 
       if (!isActive) {
-        // Matamos cookies globalmente y forzamos recarga sin sesión
-        cookieStore.set({ name: "auth_token", value: "", maxAge: 0, path: "/" });
-        cookieStore.set({ name: "user_email", value: "", maxAge: 0, path: "/" });
-        // Redirigir limpiamente para que la UI (Navbar) se repinte sin usuario
-        redirect("/?alert=sesion_cerrada_por_admin"); 
+        // Redirigimos limpiamente sin mutar cookies en el Layout
+        redirect("/?alert=sesion_cerrada_por_admin");
       }
     } catch (error) {
-      // Si el token es inválido/expirado, lo limpiamos de paso
-      cookieStore.set({ name: "auth_token", value: "", maxAge: 0, path: "/" });
+      // Si el token expira o es corrupto, dejamos que el middleware o la navegación manejen el estado
     }
   }
 
