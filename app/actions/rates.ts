@@ -1,8 +1,7 @@
 'use server';
 
 import { query } from '@/lib/db';
-import { unstable_noStore as noStore } from 'next/cache';
-import { revalidatePath } from 'next/cache';
+import { unstable_noStore as noStore, revalidatePath } from 'next/cache';
 import { notifyClientsRateChanged } from '@/app/api/rates/stream/route';
 import Pusher from 'pusher';
 
@@ -10,19 +9,6 @@ const cleanEnv = (val?: string) => {
   if (!val) return '';
   return val.replace(/^[^=]+=\s*/, '').replace(/^["']|["']$/g, '').trim();
 };
-
-const appId = cleanEnv(process.env.PUSHER_APP_ID);
-const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
-const secret = cleanEnv(process.env.PUSHER_SECRET);
-const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
-
-const pusher = new Pusher({
-  appId,
-  key,
-  secret,
-  cluster,
-  useTLS: true,
-});
 
 export async function getRatesAction() {
   noStore();
@@ -59,20 +45,42 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       }
     }
 
+    // 1. Invalidación de caché en Vercel CDN
     revalidatePath('/');
     revalidatePath('/api/rates');
 
+    // 2. Transmisión local por SSE
     try {
       notifyClientsRateChanged();
     } catch (e) {
-      // Ignorar en entorno serverless
+      // Ignorar fallback en serverless
     }
 
-    // ⚡ TRANSMISIÓN DEL PAYLOAD COMPLETO POR WEBSOCKET
+    // 3. Obtención e instanciación en tiempo de ejecución (Runtime)
+    const appId = cleanEnv(process.env.PUSHER_APP_ID);
+    const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
+    const secret = cleanEnv(process.env.PUSHER_SECRET);
+    const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
+
     if (appId && key && secret) {
+      const pusher = new Pusher({
+        appId,
+        key,
+        secret,
+        cluster,
+        useTLS: true,
+      });
+
       await pusher.trigger('rates-channel', 'rates-updated', {
-        updates, // Enviamos las tasas directamente en el mensaje
+        updates,
         timestamp: Date.now(),
+      });
+      console.log('✅ [Pusher Server] Evento "rates-updated" transmitido con éxito');
+    } else {
+      console.error('❌ [Pusher Server] Faltan variables de entorno para emitir el WebSocket:', {
+        hasAppId: !!appId,
+        hasKey: !!key,
+        hasSecret: !!secret,
       });
     }
 

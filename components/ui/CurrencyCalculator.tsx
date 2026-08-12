@@ -65,7 +65,7 @@ export function CurrencyCalculator() {
       };
     }
 
-    // 📡 CONEXIÓN PUSHER CON ACTUALIZACIÓN EN TIEMPO REAL VÍA PAYLOAD
+    // 📡 Conexión WebSocket para producción en Vercel
     let pusherClient: Pusher | null = null;
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
     const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
@@ -78,7 +78,7 @@ export function CurrencyCalculator() {
       const channel = pusherClient.subscribe("rates-channel");
 
       channel.bind("rates-updated", (data: any) => {
-        // 1. Si el socket envía el payload de tasas, las aplicamos al instante sin esperar HTTP
+        console.log("⚡ [Pusher Client] Evento de nueva tasa recibido:", data);
         if (data && Array.isArray(data.updates)) {
           applyRatesArray(data.updates);
         } else {
@@ -86,7 +86,7 @@ export function CurrencyCalculator() {
         }
       });
     } else {
-      console.warn("⚠️ Pusher Key no detectada en el bundle del cliente. Revisa las variables en Vercel y haz un Redeploy.");
+      console.warn("⚠️ [Pusher Client] NEXT_PUBLIC_PUSHER_KEY no está disponible en la app.");
     }
 
     return () => {
