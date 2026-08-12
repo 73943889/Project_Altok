@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { Save, RefreshCw, ShieldCheck, TrendingUp, DollarSign, Euro, Percent, Wallet, Building2 } from "lucide-react";
+import { Save, RefreshCw, ShieldCheck, TrendingUp, Percent, Wallet, Building2 } from "lucide-react";
 import { updateRatesAction } from "@/app/actions/rates";
 import { AdminNavbar } from "@/app/admin/AdminNavbar";
+import { triggerRateUpdate } from "@/lib/rateSync";
 
-export default function AdminTasaClient({ initialRates,userEmail }: { initialRates: any[]; userEmail?: string }) {
+export default function AdminTasaClient({ initialRates, userEmail }: { initialRates: any[]; userEmail?: string }) {
   const getRateValue = (key: string, fallback: string) => {
     const found = initialRates.find((r) => r.key === key);
     if (!found || found.value === null || found.value === undefined) return fallback;
@@ -75,6 +76,10 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
 
       const res = await updateRatesAction(updates);
       if (!res.success) throw new Error(res.error);
+
+      // ⚡ DISPARO LOCAL INMEDIATO (Sincroniza pestañas y ventana activa)
+      triggerRateUpdate();
+
       setMessage({ type: "success", text: "¡Tasas de cambio actualizadas con éxito!" });
     } catch (err: any) {
       setMessage({ type: "error", text: "Error al actualizar las tasas." });
@@ -94,6 +99,9 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
 
       const res = await updateRatesAction([{ key: "transfer_commission_bank", value: parsed }]);
       if (!res.success) throw new Error(res.error);
+
+      // ⚡ DISPARO LOCAL INMEDIATO
+      triggerRateUpdate();
 
       setCommissionBank(parsed.toFixed(2));
       setMessage({ type: "success", text: "¡Comisión para Transferencias Bancarias actualizada con éxito!" });
@@ -116,6 +124,9 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
       const res = await updateRatesAction([{ key: "transfer_commission_wallet", value: parsed }]);
       if (!res.success) throw new Error(res.error);
 
+      // ⚡ DISPARO LOCAL INMEDIATO
+      triggerRateUpdate();
+
       setCommissionWallet(parsed.toFixed(2));
       setMessage({ type: "success", text: "¡Comisión para Billeteras Digitales actualizada con éxito!" });
     } catch (err: any) {
@@ -127,7 +138,6 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
-      {/* 2. Le inyectamos el prop userEmail al Navbar */}
       <AdminNavbar userEmail={userEmail} />
 
       <div className="max-w-4xl mx-auto px-6 space-y-10 mt-8">
@@ -156,7 +166,6 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
           </div>
         )}
 
-        {/* 1. SECCIÓN: TASAS DE CAMBIO GENERALES */}
         <form onSubmit={handleSaveRates} className="space-y-6 bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
             <div className="flex items-center gap-2.5">
@@ -224,7 +233,6 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
           </div>
         </form>
 
-        {/* 📦 CONTENEDOR UNIFICADO: CONFIGURACIÓN DE COMISIONES */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-8">
           <div className="flex items-center gap-2.5 border-b border-slate-800 pb-4">
             <Percent className="w-5 h-5 text-emerald-400" />
@@ -232,8 +240,6 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            
-            {/* 1. COMISIÓN BANCO (Formulario Independiente) */}
             <form onSubmit={handleSaveCommissionBank} className="space-y-4 bg-slate-950/60 border border-slate-800/60 rounded-2xl p-5">
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-emerald-400" />
@@ -265,7 +271,6 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
               </div>
             </form>
 
-            {/* 2. COMISIÓN WALLET (Formulario Independiente) */}
             <form onSubmit={handleSaveCommissionWallet} className="space-y-4 bg-slate-950/60 border border-slate-800/60 rounded-2xl p-5">
               <div className="flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-emerald-400" />
@@ -296,10 +301,8 @@ export default function AdminTasaClient({ initialRates,userEmail }: { initialRat
                 </button>
               </div>
             </form>
-
           </div>
         </div>
-
       </div>
     </div>
   );

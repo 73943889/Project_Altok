@@ -1,3 +1,5 @@
+//app/admin/tasa/page.tsx
+
 import { cookies } from "next/headers";
 import { query } from "@/lib/db";
 import { unstable_noStore as noStore } from "next/cache";
@@ -8,7 +10,6 @@ export const dynamic = "force-dynamic";
 export default async function AdminTasaPage() {
   noStore();
   
-  // 1. Extraemos las cookies en el Server Component
   const cookieStore = await cookies();
   const userEmail = cookieStore.get("user_email")?.value || "danielgastelusotelo@gmail.com";
 
@@ -20,6 +21,5 @@ export default async function AdminTasaPage() {
     console.error("Error al obtener tasas en el Server Component:", err);
   }
 
-  // 2. Pasamos el userEmail al componente cliente
   return <AdminTasaClient initialRates={initialRates} userEmail={userEmail} />;
 }
