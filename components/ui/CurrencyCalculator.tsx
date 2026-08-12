@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeftRight, RefreshCw, ShieldCheck } from "lucide-react";
-import { query } from "@/lib/db";
 import { rateChannel } from "@/lib/rateSync";
+import Pusher from "pusher-js";
 
 type OriginCurrency = "EUR" | "USD";
 
@@ -23,24 +23,16 @@ export function CurrencyCalculator() {
   
   const [loadingRate, setLoadingRate] = useState<boolean>(false);
 
+  // Consulta limpia al endpoint HTTP con no-store
   const fetchRates = async () => {
     try {
       setLoadingRate(true);
-      // Consulta directa a la tabla site_config en Neon PostgreSQL
-      const dbResponse: any = await query(
-        `SELECT key, value FROM public.site_config WHERE key = ANY($1)`,
-        [[
-          "exchange_rate_buy", 
-          "exchange_rate_sell", 
-          "exchange_rate_sale",
-          "exchange_rate_buy_usd",
-          "exchange_rate_sell_usd"
-        ]]
-      );
+      const res = await fetch("/api/rates", { cache: "no-store" });
+      if (!res.ok) throw new Error("Error en respuesta de API");
 
-      const rows = Array.isArray(dbResponse) ? dbResponse : dbResponse?.rows || [];
+      const rows = await res.json();
 
-      if (rows.length > 0) {
+      if (Array.isArray(rows) && rows.length > 0) {
         rows.forEach((item: any) => {
           const val = parseFloat(item.value);
           if (isNaN(val)) return;
@@ -61,6 +53,7 @@ export function CurrencyCalculator() {
   useEffect(() => {
     fetchRates();
 
+    // Eventos locales
     const handleLocalUpdate = () => { fetchRates(); };
     window.addEventListener("valora_rate_updated", handleLocalUpdate);
 
@@ -72,9 +65,30 @@ export function CurrencyCalculator() {
       };
     }
 
+    // 📡 Conexión por WebSocket mediante Pusher para Producción Serverless
+    let pusherClient: Pusher | null = null;
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
+
+    if (pusherKey) {
+      pusherClient = new Pusher(pusherKey, {
+        cluster: pusherCluster,
+      });
+
+      const channel = pusherClient.subscribe("rates-channel");
+      channel.bind("rates-updated", () => {
+        fetchRates();
+      });
+    }
+
     return () => {
       window.removeEventListener("valora_rate_updated", handleLocalUpdate);
       if (rateChannel) { rateChannel.onmessage = null; }
+      if (pusherClient) {
+        pusherClient.unbind_all();
+        pusherClient.unsubscribe("rates-channel");
+        pusherClient.disconnect();
+      }
     };
   }, []);
 

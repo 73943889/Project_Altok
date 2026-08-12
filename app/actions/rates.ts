@@ -1,9 +1,19 @@
-// app/actions/rates.ts
 'use server';
 
 import { query } from '@/lib/db';
 import { unstable_noStore as noStore } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { notifyClientsRateChanged } from '@/app/api/rates/stream/route';
+import Pusher from 'pusher';
+
+// Instancia única del cliente Pusher para el Servidor
+const pusher = new Pusher({
+  appId: process.env.PUSHER_APP_ID || '',
+  key: process.env.NEXT_PUBLIC_PUSHER_KEY || '',
+  secret: process.env.PUSHER_SECRET || '',
+  cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'mt1',
+  useTLS: true,
+});
 
 export async function getRatesAction() {
   noStore();
@@ -40,8 +50,23 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       }
     }
 
-    // 🔄 Notificamos al stream en tiempo real de forma inmediata y limpia
-    notifyClientsRateChanged();
+    // 1. Revalidación de caché estática en Vercel
+    revalidatePath('/');
+    revalidatePath('/api/rates');
+
+    // 2. Mantenemos la notificación SSE local si está en desarrollo
+    try {
+      notifyClientsRateChanged();
+    } catch (e) {
+      // Ignorar fallback en serverless
+    }
+
+    // 3. Disparo por WebSockets real en Producción (Pusher)
+    if (process.env.PUSHER_APP_ID) {
+      await pusher.trigger('rates-channel', 'rates-updated', {
+        timestamp: Date.now(),
+      });
+    }
 
     return { success: true };
   } catch (err: any) {
