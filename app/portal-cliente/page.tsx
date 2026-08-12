@@ -153,7 +153,7 @@ export default function PortalClientePage() {
     fetchPortalData();
 
     // 1. Canal exclusivo para las Tasas de Cambio (Intacto y funcionando)
-    const ratesEventSource = new EventSource('/api/rates/stream');
+    const ratesEventSource = new EventSource('/api/rates');
     ratesEventSource.onmessage = (event) => {
       if (event.data === 'ping' || event.data === 'connected') return;
       if (event.data === 'update') {

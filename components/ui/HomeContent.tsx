@@ -69,7 +69,7 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
     fetchTasaActiva();
 
     // 2. Conexión pasiva en tiempo real vía Server-Sent Events (Cero polling a la BD)
-    const eventSource = new EventSource('/api/rates/stream');
+    const eventSource = new EventSource('/api/rates');
     
     eventSource.onmessage = (event) => {
       if (event.data === 'update') {

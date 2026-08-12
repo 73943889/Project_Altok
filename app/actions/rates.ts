@@ -2,7 +2,6 @@
 
 import { query } from '@/lib/db';
 import { unstable_noStore as noStore, revalidatePath } from 'next/cache';
-import { notifyClientsRateChanged } from '@/app/api/rates/stream/route';
 import Pusher from 'pusher';
 
 const cleanEnv = (val?: string) => {
@@ -45,18 +44,11 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       }
     }
 
-    // 1. Invalidación de caché en Vercel CDN
+    // Invalidación de caché en Vercel CDN
     revalidatePath('/');
     revalidatePath('/api/rates');
 
-    // 2. Transmisión local por SSE
-    try {
-      notifyClientsRateChanged();
-    } catch (e) {
-      // Ignorar fallback en serverless
-    }
-
-    // 3. Obtención e instanciación en tiempo de ejecución (Runtime)
+    // Emisión por Pusher (Funciona en Dev Local y en Vercel Serverless)
     const appId = cleanEnv(process.env.PUSHER_APP_ID);
     const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
     const secret = cleanEnv(process.env.PUSHER_SECRET);
@@ -75,13 +67,7 @@ export async function updateRatesAction(updates: { key: string; value: number }[
         updates,
         timestamp: Date.now(),
       });
-      console.log('✅ [Pusher Server] Evento "rates-updated" transmitido con éxito');
-    } else {
-      console.error('❌ [Pusher Server] Faltan variables de entorno para emitir el WebSocket:', {
-        hasAppId: !!appId,
-        hasKey: !!key,
-        hasSecret: !!secret,
-      });
+      console.log('✅ [Pusher Server] Evento "rates-updated" emitido exitosamente');
     }
 
     return { success: true };

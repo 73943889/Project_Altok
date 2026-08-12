@@ -54,6 +54,7 @@ export function CurrencyCalculator() {
   useEffect(() => {
     fetchRates();
 
+    // 1. Manejadores para pruebas locales (Misma ventana / Misma pestaña)
     const handleLocalUpdate = () => { fetchRates(); };
     window.addEventListener("valora_rate_updated", handleLocalUpdate);
 
@@ -65,28 +66,23 @@ export function CurrencyCalculator() {
       };
     }
 
-    // 📡 Conexión WebSocket para producción en Vercel
+    // 2. Conexión WebSocket para Pruebas Multidispositivo en Local y Producción
     let pusherClient: Pusher | null = null;
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
     const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
 
     if (pusherKey) {
-      pusherClient = new Pusher(pusherKey, {
-        cluster: pusherCluster,
-      });
-
+      pusherClient = new Pusher(pusherKey, { cluster: pusherCluster });
       const channel = pusherClient.subscribe("rates-channel");
 
       channel.bind("rates-updated", (data: any) => {
-        console.log("⚡ [Pusher Client] Evento de nueva tasa recibido:", data);
+        console.log("⚡ [Pusher] Tasa recibida:", data);
         if (data && Array.isArray(data.updates)) {
           applyRatesArray(data.updates);
         } else {
           fetchRates();
         }
       });
-    } else {
-      console.warn("⚠️ [Pusher Client] NEXT_PUBLIC_PUSHER_KEY no está disponible en la app.");
     }
 
     return () => {
