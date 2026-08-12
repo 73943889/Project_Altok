@@ -23,7 +23,19 @@ export function CurrencyCalculator() {
   
   const [loadingRate, setLoadingRate] = useState<boolean>(false);
 
-  // Consulta limpia al endpoint HTTP con no-store
+  const applyRatesArray = (rows: any[]) => {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    rows.forEach((item: any) => {
+      const val = parseFloat(item.value);
+      if (isNaN(val)) return;
+
+      if (item.key === "exchange_rate_buy") setBuyRateEur(val);
+      if (item.key === "exchange_rate_sell" || item.key === "exchange_rate_sale") setSellRateEur(val);
+      if (item.key === "exchange_rate_buy_usd") setBuyRateUsd(val);
+      if (item.key === "exchange_rate_sell_usd") setSellRateUsd(val);
+    });
+  };
+
   const fetchRates = async () => {
     try {
       setLoadingRate(true);
@@ -31,18 +43,7 @@ export function CurrencyCalculator() {
       if (!res.ok) throw new Error("Error en respuesta de API");
 
       const rows = await res.json();
-
-      if (Array.isArray(rows) && rows.length > 0) {
-        rows.forEach((item: any) => {
-          const val = parseFloat(item.value);
-          if (isNaN(val)) return;
-
-          if (item.key === "exchange_rate_buy") setBuyRateEur(val);
-          if (item.key === "exchange_rate_sell" || item.key === "exchange_rate_sale") setSellRateEur(val);
-          if (item.key === "exchange_rate_buy_usd") setBuyRateUsd(val);
-          if (item.key === "exchange_rate_sell_usd") setSellRateUsd(val);
-        });
-      }
+      applyRatesArray(rows);
     } catch (err) {
       console.error("Error al obtener tasas en la calculadora:", err);
     } finally {
@@ -53,7 +54,6 @@ export function CurrencyCalculator() {
   useEffect(() => {
     fetchRates();
 
-    // Eventos locales
     const handleLocalUpdate = () => { fetchRates(); };
     window.addEventListener("valora_rate_updated", handleLocalUpdate);
 
@@ -65,7 +65,7 @@ export function CurrencyCalculator() {
       };
     }
 
-    // 📡 Conexión por WebSocket mediante Pusher para Producción Serverless
+    // 📡 CONEXIÓN PUSHER CON ACTUALIZACIÓN EN TIEMPO REAL VÍA PAYLOAD
     let pusherClient: Pusher | null = null;
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
     const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
@@ -76,9 +76,17 @@ export function CurrencyCalculator() {
       });
 
       const channel = pusherClient.subscribe("rates-channel");
-      channel.bind("rates-updated", () => {
-        fetchRates();
+
+      channel.bind("rates-updated", (data: any) => {
+        // 1. Si el socket envía el payload de tasas, las aplicamos al instante sin esperar HTTP
+        if (data && Array.isArray(data.updates)) {
+          applyRatesArray(data.updates);
+        } else {
+          fetchRates();
+        }
       });
+    } else {
+      console.warn("⚠️ Pusher Key no detectada en el bundle del cliente. Revisa las variables en Vercel y haz un Redeploy.");
     }
 
     return () => {

@@ -6,7 +6,6 @@ import { revalidatePath } from 'next/cache';
 import { notifyClientsRateChanged } from '@/app/api/rates/stream/route';
 import Pusher from 'pusher';
 
-// Función auxiliar para limpiar comillas o prefijos accidentales en las variables
 const cleanEnv = (val?: string) => {
   if (!val) return '';
   return val.replace(/^[^=]+=\s*/, '').replace(/^["']|["']$/g, '').trim();
@@ -66,11 +65,13 @@ export async function updateRatesAction(updates: { key: string; value: number }[
     try {
       notifyClientsRateChanged();
     } catch (e) {
-      // Fallback para desarrollo local
+      // Ignorar en entorno serverless
     }
 
+    // ⚡ TRANSMISIÓN DEL PAYLOAD COMPLETO POR WEBSOCKET
     if (appId && key && secret) {
       await pusher.trigger('rates-channel', 'rates-updated', {
+        updates, // Enviamos las tasas directamente en el mensaje
         timestamp: Date.now(),
       });
     }
