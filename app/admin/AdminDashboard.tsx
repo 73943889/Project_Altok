@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { query } from "@/lib/db";
+import { getAdminOperations, updateTransactionStatusAction } from "@/app/actions/admin-dashboard";
 import { ClientOperation, TransactionStatus } from "@/src/types/admin";
 import { AdminNavbar } from "@/app/admin/AdminNavbar";
 import {
@@ -38,12 +38,10 @@ export default function AdminDashboard() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Controlar la hidratación del cliente
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Cierra el menú desplegable al hacer clic fuera de él
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -57,50 +55,28 @@ export default function AdminDashboard() {
   const fetchOperations = async () => {
     setLoading(true);
     try {
-      // 1. Consulta SQL relacional directa en Neon (Transacciones + Clientes)
-      const dbResponse: any = await query(`
-        SELECT 
-          t.*, 
-          json_build_object(
-            'id', c.id,
-            'full_name', c.full_name,
-            'email', c.email,
-            'document_type', c.document_type,
-            'document_number', c.document_number,
-            'phone', c.phone
-          ) as clients
-        FROM public.transactions t
-        LEFT JOIN public.clients c ON t.client_id = c.id
-        ORDER BY t.created_at DESC;
-      `);
+      const res = await getAdminOperations();
+      if (!res.success || !res.transactions) {
+        throw new Error(res.error || "Error al obtener operaciones");
+      }
 
-      const txData = Array.isArray(dbResponse) ? dbResponse : dbResponse?.rows || [];
-
-      // 2. Mapeo estructural blindado contra valores nulos
-      const formattedData: ClientOperation[] = txData.map((tx: any) => {
-        const rawClient = tx.clients;
-        const client = Array.isArray(rawClient) ? rawClient[0] : rawClient;
-
-        return {
-          ...tx,
-          full_name: client?.full_name || tx.full_name || tx.sender_name || "Remitente no registrado",
-          email: client?.email || tx.email || tx.sender_email || "Sin correo",
-          document_type: client?.document_type || tx.document_type || "DNI",
-          document_number: client?.document_number || tx.document_number || "S/N",
-          phone: client?.phone || tx.phone || "S/N",
-
-          recipient_name: tx.recipient_name || tx.receiver_name || "Destinatario no especificado",
-          recipient_bank: tx.recipient_bank || tx.bank_name || "Banco no especificado",
-          recipient_account: tx.recipient_account || tx.account_number || "Sin cuenta",
-
-          send_amount: Number(tx.send_amount || 0),
-          receive_amount: Number(tx.receive_amount || 0),
-          send_currency: tx.send_currency || "EUR",
-          receive_currency: tx.receive_currency || "PEN",
-          operation_code: tx.operation_code || tx.id?.slice(0, 8) || "N/A",
-          status: (tx.status || "PENDIENTE") as TransactionStatus,
-        };
-      });
+      const formattedData: ClientOperation[] = res.transactions.map((tx: any) => ({
+        ...tx,
+        full_name: tx.full_name || "Remitente no registrado",
+        email: tx.email || "Sin correo",
+        document_type: tx.document_type || "DNI",
+        document_number: tx.document_number || "S/N",
+        phone: tx.phone || "S/N",
+        recipient_name: tx.recipient_name || "Destinatario no especificado",
+        recipient_bank: tx.recipient_bank || "Banco no especificado",
+        recipient_account: tx.recipient_account || "Sin cuenta",
+        send_amount: Number(tx.send_amount || 0),
+        receive_amount: Number(tx.receive_amount || 0),
+        send_currency: tx.send_currency || "EUR",
+        receive_currency: tx.receive_currency || "PEN",
+        operation_code: tx.operation_code || tx.id?.slice(0, 8) || "N/A",
+        status: (tx.status || "PENDIENTE") as TransactionStatus,
+      }));
 
       setOperations(formattedData);
     } catch (err: any) {
@@ -110,7 +86,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Conexión al stream unificado de eventos del servidor (SSE) resiliente y filtrado
   useEffect(() => {
     fetchOperations(); 
 
@@ -156,6 +131,8 @@ export default function AdminDashboard() {
     setUpdatingId(id);
     setOpenDropdownId(null);
 
+    const previousOperations = [...operations];
+
     setOperations((prev) =>
       prev.map((op) => (op.id === id ? { ...op, status: newStatus } : op))
     );
@@ -165,36 +142,14 @@ export default function AdminDashboard() {
     }
 
     try {
-      // Actualización directa en Neon PostgreSQL
-      await query(
-        'UPDATE public.transactions SET status = $1, updated_at = NOW() WHERE id = $2',
-        [newStatus, id]
-      );
-
-      const currentOp = operations.find((op) => op.id === id);
-
-      if (currentOp && currentOp.email && currentOp.email !== "Sin correo") {
-        fetch("/api/send-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: currentOp.email,
-            fullName: currentOp.full_name,
-            operationCode: currentOp.operation_code || currentOp.id.slice(0, 8),
-            status: newStatus,
-            sendAmount: currentOp.send_amount,
-            sendCurrency: currentOp.send_currency,
-            receiveAmount: currentOp.receive_amount,
-            receiveCurrency: currentOp.receive_currency,
-          }),
-        }).catch((emailErr) => {
-          console.error("⚠️ Excepción al intentar conectar con /api/send-email:", emailErr);
-        });
+      const res = await updateTransactionStatusAction(id, newStatus, null);
+      if (!res.success) {
+        throw new Error(res.error || "Error al actualizar estado");
       }
     } catch (err: any) {
       console.error("❌ Error actualizando estado en BD:", err);
       alert(`Error actualizando estado: ${err.message}`);
-      await fetchOperations();
+      setOperations(previousOperations);
     } finally {
       setUpdatingId(null);
     }

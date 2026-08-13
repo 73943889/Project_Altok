@@ -152,7 +152,7 @@ export default function PortalClientePage() {
   useEffect(() => {
     fetchPortalData();
 
-    // 1. Canal exclusivo para las Tasas de Cambio (Intacto y funcionando)
+    // 1. Canal exclusivo para las Tasas de Cambio
     const ratesEventSource = new EventSource('/api/rates');
     ratesEventSource.onmessage = (event) => {
       if (event.data === 'ping' || event.data === 'connected') return;
@@ -174,7 +174,6 @@ export default function PortalClientePage() {
         if (targetId && newStatus) {
           console.log(`⚡ [Portal Realtime] Orden ${targetId} actualizada a ${newStatus}`);
           
-          // Actualización instantánea en memoria de la tabla de transferencias del cliente
           setTransfers((prevTransfers) =>
             prevTransfers.map((tx) =>
               tx.id === targetId ? { ...tx, status: newStatus } : tx
@@ -190,8 +189,6 @@ export default function PortalClientePage() {
       txEventSource.close();
     };
   }, [fetchPortalData]);
-
-
 
   const completedTransfersCount = transfers.filter((tx) => {
     const status = (tx.status || "").toUpperCase();
@@ -506,7 +503,6 @@ export default function PortalClientePage() {
                   return;
                 }
 
-                // 🛡️ Validación en línea de la contraseña sin usar alert()
                 if (newPassword && newPassword.trim() !== "") {
                   if (newPassword.length < 8) {
                     setPasswordError("La contraseña debe tener un mínimo de 8 caracteres.");
@@ -593,7 +589,7 @@ export default function PortalClientePage() {
                     <select
                       value={countryCodeInput}
                       onChange={(e) => setCountryCodeInput(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:9px_9px] bg-[right_10px_center] bg-no-repeat pr-6"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono cursor-pointer appearance-none pr-6"
                     >
                       <option value="+34" className="bg-slate-900 text-white">🇪🇸 +34</option>
                       <option value="+51" className="bg-slate-900 text-white">🇵🇪 +51</option>
@@ -630,7 +626,7 @@ export default function PortalClientePage() {
                   />
                 </div>
 
-                {/* SECCIÓN DE CAMBIO DE CONTRASEÑA CON INDICADOR VISUAL DE FORTALEZA */}
+                {/* SECCIÓN DE CAMBIO DE CONTRASEÑA */}
                 <div className="pt-3 border-t border-slate-800 space-y-3">
                   <p className="text-xs font-bold text-emerald-400">Seguridad: Cambiar Contraseña</p>
                   
@@ -680,7 +676,6 @@ export default function PortalClientePage() {
                     </div>
                   </div>
 
-                  {/* 📊 BARRA INDICADORA DE FORTALEZA DE CLAVE */}
                   {newPassword.length > 0 && (
                     <div className="space-y-1 pt-1">
                       <div className="flex gap-1 h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
@@ -695,7 +690,6 @@ export default function PortalClientePage() {
                     </div>
                   )}
 
-                  {/* 🚨 TEXTO DE ERROR EN ROJO DEBAJO DE LOS CAMPOS */}
                   {passwordError && (
                     <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans mt-2 bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl">
                       <ShieldAlert className="w-4 h-4 shrink-0" /> {passwordError}
@@ -731,7 +725,6 @@ export default function PortalClientePage() {
         )}
       </main>
 
-      {/* Footer corporativo */}
       <footer className="bg-slate-950 border-t border-slate-900 py-8 text-xs text-slate-500 text-center">
         <p>© {new Date().getFullYear()} Altok€. Todos los derechos reservados.</p>
       </footer>

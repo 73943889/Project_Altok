@@ -1,110 +1,135 @@
-import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
-import { query } from "@/lib/db";
-import { redirect } from "next/navigation";
+import type { Metadata, Viewport } from "next";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-if (!process.env.JWT_SECRET) {
-  throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
-}
+// 🚀 Optimización de Fuente para Core Web Vitals (Zero CLS)
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+// 🌐 Configuración del Viewport (Next.js 14/15 Standard)
+export const viewport: Viewport = {
+  themeColor: "#020617",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
 
+// 🔍 SEO & Metaetiquetas de Nivel Empresarial
 export const metadata: Metadata = {
-  title: "Altok€ | Envíos de Dinero y Remesas Perú - España - Estados Unidos",
-  description: "Envía dinero de España a Perú con la mejor tasa de cambio del mercado, sin comisiones ocultas y transferencias directas a BCP, BBVA, Interbank y Yape/Plin.",
-  keywords: ["remesas peru", "enviar dinero a peru", "tasa de cambio euro sol", "Altok€", "transferencias peru"],
-  authors: [{ name: "Altok€" }],
+  metadataBase: new URL("https://valoratransfer.com"),
+  title: {
+    default: "Altok€ | Envíos de Dinero y Remesas Perú - España - Estados Unidos",
+    template: "%s | Altok€",
+  },
+  description:
+    "Envía dinero de España a Perú con la mejor tasa de cambio del mercado, sin comisiones ocultas y transferencias directas a BCP, BBVA, Interbank y Yape/Plin en minutos.",
+  keywords: [
+    "remesas peru",
+    "enviar dinero a peru",
+    "tasa de cambio euro sol",
+    "Altok€",
+    "transferencias peru",
+    "yape desde españa",
+    "envio de dinero seguro",
+  ],
+  authors: [{ name: "Altok€", url: "https://valoratransfer.com" }],
+  creator: "Altok€",
+  publisher: "Altok€",
+  alternates: {
+    canonical: "https://valoratransfer.com",
+  },
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
   openGraph: {
     title: "Altok€ - Transferencias de Dinero Rápidas y Seguras",
-    description: "Calcula tu envío en tiempo real y recibe tus soles en minutos.",
+    description:
+      "Calcula tu envío en tiempo real y recibe tus soles en minutos con la mejor tasa garantizada.",
     url: "https://valoratransfer.com",
     siteName: "Altok€",
     locale: "es_PE",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Altok€ - Remesas y Transferencias a Perú",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Altok€ | Envíos de Dinero",
+    title: "Altok€ | Envíos de Dinero a Perú",
     description: "Tu dinero seguro en Perú con las mejores tasas de cambio.",
+    images: ["/og-image.png"],
   },
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // 🛡️ CAPA DE SEGURIDAD GLOBAL: Validación en tiempo real de cuentas inhabilitadas
-  const cookieStore = await cookies();
-  const token = cookieStore.get("auth_token")?.value;
-
-  if (token) {
-    try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
-      const userEmail = payload.email as string;
-
-      if (userEmail) {
-        // Consulta ultrarrápida a Neon PostgreSQL para verificar el estado is_active actual
-        const res: any = await query(
-          "SELECT is_active FROM public.users WHERE email = $1 LIMIT 1",
-          [userEmail]
-        );
-        const rows = Array.isArray(res) ? res : res?.rows;
-
-        if (rows && rows.length > 0) {
-          const isActive = rows[0].is_active === true || rows[0].is_active === 't' || rows[0].is_active === 1;
-
-          // Si el administrador inhabilitó la cuenta, destruimos cookies y expulsamos al login
-          if (!isActive) {
-            cookieStore.set({ name: "auth_token", value: "", maxAge: 0, path: "/" });
-            cookieStore.set({ name: "user_email", value: "", maxAge: 0, path: "/" });
-            redirect("/login?error=cuenta_inhabilitada");
-          }
-        }
-      }
-    } catch (err) {
-      // Si el token es inválido o expiró, dejamos que el flujo normal actúe
-    }
-  }
-
-  // Schema.org para Rich Snippets en Google (Intacto y optimizado)
+  // 🏷️ Datos Estructurados JSON-LD (Schema.org)
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "FinancialService",
-    "name": "Altok€",
-    "url": "https://valoratransfer.com",
-    "logo": "https://valoratransfer.com/logo.png",
-    "description": "Servicios de transferencia de dinero y remesas internacionales entre Europa y Perú.",
-    "currenciesAccepted": "EUR, PEN",
-    "paymentAccepted": "Bank Transfer, Credit Card",
-    "priceRange": "$",
-    "address": {
+    name: "Altok€",
+    url: "https://valoratransfer.com",
+    logo: "https://valoratransfer.com/logo.png",
+    description:
+      "Servicios de transferencia de dinero y remesas internacionales entre Europa, EE.UU. y Perú.",
+    currenciesAccepted: "EUR, USD, PEN",
+    paymentAccepted: "Bank Transfer, Credit Card, Debit Card",
+    priceRange: "$",
+    address: {
       "@type": "PostalAddress",
-      "addressCountry": "PE",
-      "addressLocality": "Lima"
-    }
+      addressCountry: "PE",
+      addressLocality: "Lima",
+    },
   };
 
   return (
-    /* 
-      💡 suppressHydrationWarning previene errores de consola cuando extensiones 
-      del navegador o atributos de tema alteran la etiqueta html en la carga inicial.
-    */
-    <html lang="es" className="dark" suppressHydrationWarning>
+    <html
+      lang="es"
+      className={`dark ${jakarta.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950 min-h-screen flex flex-col">
-        {children}
+      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950 min-h-screen flex flex-col font-sans">
+        {/* ♿ Enlace de accesibilidad para lectores de pantalla */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-emerald-500 focus:text-slate-950"
+        >
+          Saltar al contenido principal
+        </a>
+
+        <main id="main-content" className="flex-1 flex flex-col">
+          {children}
+        </main>
       </body>
     </html>
   );
