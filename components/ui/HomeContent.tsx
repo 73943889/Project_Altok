@@ -10,6 +10,7 @@ import {
   ArrowRight, 
   Lock 
 } from "lucide-react";
+import Pusher from "pusher-js";
 import { TransferModal } from "@/components/ui/TransferModal";
 import { AboutSection } from "@/components/ui/AboutSection";
 import { HowItWorks } from "@/components/ui/HowItWorks";
@@ -76,21 +77,29 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
   useEffect(() => {
     fetchTasaActiva();
 
-    const eventSource = new EventSource('/api/rates');
+    // Reemplazo Quirúrgico: Pusher en lugar de EventSource
+    let pusherClient: Pusher | null = null;
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
 
-    eventSource.onmessage = (event) => {
-      if (event.data === 'update') {
+    if (pusherKey) {
+      pusherClient = new Pusher(pusherKey, { cluster: pusherCluster });
+      const channel = pusherClient.subscribe("rates-channel");
+
+      channel.bind("rates-updated", () => {
+        console.log("⚡ [Pusher] Tasa actualizada detectada, refrescando UI...");
         fetchTasaActiva();
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error("Error en la conexión SSE:", err);
-      eventSource.close();
-    };
+      });
+    } else {
+      console.warn("⚠️ NEXT_PUBLIC_PUSHER_KEY no está definida.");
+    }
 
     return () => {
-      eventSource.close();
+      if (pusherClient) {
+        pusherClient.unbind_all();
+        pusherClient.unsubscribe("rates-channel");
+        pusherClient.disconnect();
+      }
     };
   }, []);
 

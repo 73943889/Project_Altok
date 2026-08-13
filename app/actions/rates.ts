@@ -24,6 +24,7 @@ export async function getRatesAction() {
 export async function updateRatesAction(updates: { key: string; value: number }[]) {
   noStore();
   try {
+    // 1. Capa de Persistencia Transaccional (Base de Datos Crítica)
     for (const item of updates) {
       await query(
         `INSERT INTO public.site_config (key, value, updated_at) 
@@ -44,35 +45,42 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       }
     }
 
-    // Invalidación de caché en Vercel CDN
+    // 2. Invalidación de la Caché CDN en Vercel
     revalidatePath('/');
     revalidatePath('/api/rates');
 
-    // Emisión por Pusher (Funciona en Dev Local y en Vercel Serverless)
-    const appId = cleanEnv(process.env.PUSHER_APP_ID);
-    const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
-    const secret = cleanEnv(process.env.PUSHER_SECRET);
-    const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
+    // 3. Capa de Tiempo Real (Pusher) aislada con Tolerancia a Fallos
+    try {
+      const appId = cleanEnv(process.env.PUSHER_APP_ID);
+      const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
+      const secret = cleanEnv(process.env.PUSHER_SECRET);
+      const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
 
-    if (appId && key && secret) {
-      const pusher = new Pusher({
-        appId,
-        key,
-        secret,
-        cluster,
-        useTLS: true,
-      });
+      if (appId && key && secret) {
+        const pusher = new Pusher({
+          appId,
+          key,
+          secret,
+          cluster,
+          useTLS: true,
+        });
 
-      await pusher.trigger('rates-channel', 'rates-updated', {
-        updates,
-        timestamp: Date.now(),
-      });
-      console.log('✅ [Pusher Server] Evento "rates-updated" emitido exitosamente');
+        await pusher.trigger('rates-channel', 'rates-updated', {
+          updates,
+          timestamp: Date.now(),
+        });
+        console.log('✅ [Pusher Server] Evento "rates-updated" emitido exitosamente');
+      } else {
+        console.warn('⚠️ [Pusher Server] Omitido: Faltan credenciales de entorno en el servidor.');
+      }
+    } catch (pusherErr: any) {
+      // Degracación elegante: Si Pusher falla, no tiramos abajo la operación de guardado en BD
+      console.error('❌ [Pusher Error No Fatal]:', pusherErr.message || pusherErr);
     }
 
     return { success: true };
   } catch (err: any) {
-    console.error('Error al actualizar tasas y comisiones:', err);
+    console.error('Error crítico al actualizar tasas y comisiones en DB:', err);
     return { success: false, error: err.message };
   }
 }
