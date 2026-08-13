@@ -2,7 +2,7 @@
 
 import { query } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import Pusher from 'pusher'; // ✅ Paquete correcto para el entorno de servidor (Node.js)
+import Pusher from 'pusher';
 
 export async function getAdminUsersAction() {
   try {
@@ -53,12 +53,14 @@ const cleanEnv = (val?: string) => {
 
 export async function toggleUserStatusAction(userId: string, currentStatus: boolean) {
   try {
-    const newStatus = !currentStatus; // Invierte el booleano actual
+    // Invertimos de manera limpia el estado actual para la base de datos
+    const newStatus = !currentStatus;
     
     console.log(`🔄 Actualizando usuario ID: ${userId} a is_active: ${newStatus}`);
 
+    // Ejecutamos la actualización directa en Neon PostgreSQL
     const res = await query(
-      `UPDATE public.users SET is_active = $1 WHERE id = $2 RETURNING id, is_active`,
+      `UPDATE public.users SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, is_active`,
       [newStatus, userId]
     );
 
@@ -68,11 +70,11 @@ export async function toggleUserStatusAction(userId: string, currentStatus: bool
       throw new Error(`No se encontró ningún usuario con el ID: ${userId} para actualizar.`);
     }
 
-    // ⚡ Emisión en tiempo real mediante Pusher para expulsar al cliente si fue inhabilitado
+    // ⚡ Emisión en tiempo real mediante Pusher para notificar al cliente (Kick-out si es inhabilitado)
     try {
       const appId = cleanEnv(process.env.PUSHER_APP_ID);
       const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
-      const secret = process.env.PUSHER_SECRET;
+      const secret = cleanEnv(process.env.PUSHER_SECRET);
       const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
 
       if (appId && key && secret) {
