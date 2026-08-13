@@ -89,14 +89,25 @@ export default function PortalClientePage() {
   };
 
   const fetchPortalData = useCallback(async (isBackground = false) => {
+    // 🛡️ Red de seguridad contra bloqueos (Timeout de 6 segundos)
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn("⚠️ [Portal Timeout] La consulta tardó demasiado. Forzando cierre de loader...");
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }, 6000);
+
     try {
       if (!isBackground) setLoading(true);
       else setRefreshing(true);
 
       const response = await getPortalData();
 
-      if (!response.success || !response.user) {
-        if (response.error === "cuenta_inhabilitada") {
+      clearTimeout(timeoutId); // Limpiamos el timeout si responde a tiempo
+
+      if (!response || !response.success || !response.user) {
+        if (response?.error === "cuenta_inhabilitada") {
           router.push("/login?error=cuenta_inhabilitada");
         } else {
           router.push("/login");
@@ -142,12 +153,13 @@ export default function PortalClientePage() {
         }
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.error("❌ Error crítico al sincronizar el portal financiero:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router]);
+  }, [router, loading]);
 
   // ⚡ Sincronización en Tiempo Real unificada con Pusher (Transacciones y Seguridad de Cuenta)
   useEffect(() => {
