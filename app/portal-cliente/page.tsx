@@ -96,11 +96,9 @@ export default function PortalClientePage() {
   const fetchPortalData = useCallback(async (isBackground = false) => {
     // 🛡️ Red de seguridad contra bloqueos (Timeout de 6 segundos)
     const timeoutId = setTimeout(() => {
-      if (loading) {
-        console.warn("⚠️ [Portal Timeout] La consulta tardó demasiado. Forzando cierre de loader...");
-        setLoading(false);
-        setRefreshing(false);
-      }
+      console.warn("⚠️ [Portal Timeout] La consulta tardó demasiado. Forzando cierre de loader...");
+      setLoading(false);
+      setRefreshing(false);
     }, 6000);
 
     try {
@@ -164,7 +162,7 @@ export default function PortalClientePage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router, loading]);
+  }, [router]); // ✅ SOLUCIÓN: Eliminamos 'loading' de las dependencias
 
   // ⚡ Sincronización en Tiempo Real unificada con Pusher (Transacciones y Seguridad de Cuenta)
   useEffect(() => {
@@ -205,7 +203,7 @@ export default function PortalClientePage() {
         pusherClient.disconnect();
       }
     };
-  }, [fetchPortalData, router]); // ✅ Eliminado 'user' de las dependencias para evitar el bucle
+  }, [fetchPortalData, router]);
 
   const completedTransfersCount = transfers.filter((tx) => {
     const status = (tx.status || "").toUpperCase();
