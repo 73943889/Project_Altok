@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { logoutAction } from '@/app/actions/auth';
 import { useRouter } from "next/navigation";
+import Pusher from "pusher-js";
 import { 
   LogOut, 
   Send, 
@@ -148,45 +149,33 @@ export default function PortalClientePage() {
     }
   }, [router]);
 
-  // ⚡ Sincronización en Tiempo Real Dual y Robusta
+  // ⚡ Sincronización en Tiempo Real unificada con Pusher
   useEffect(() => {
     fetchPortalData();
 
-    // 1. Canal exclusivo para las Tasas de Cambio
-    const ratesEventSource = new EventSource('/api/rates');
-    ratesEventSource.onmessage = (event) => {
-      if (event.data === 'ping' || event.data === 'connected') return;
-      if (event.data === 'update') {
-        fetchPortalData(true);
-      }
-    };
-    ratesEventSource.onerror = () => ratesEventSource.close();
+    let pusherClient: Pusher | null = null;
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
 
-    // 2. ⚡ Canal unificado de Transacciones (/api/events) compartido con el Admin
-    const txEventSource = new EventSource('/api/events');
-    txEventSource.onmessage = (event) => {
-      if (event.data === 'ping' || event.data === 'connected') return;
+    if (pusherKey) {
+      pusherClient = new Pusher(pusherKey, { cluster: pusherCluster });
+      const channel = pusherClient.subscribe("operations-channel");
 
-      if (event.data.startsWith('update:')) {
-        const rawData = event.data.replace('update:', '');
-        const [targetId, newStatus] = rawData.split('|');
-
-        if (targetId && newStatus) {
-          console.log(`⚡ [Portal Realtime] Orden ${targetId} actualizada a ${newStatus}`);
-          
-          setTransfers((prevTransfers) =>
-            prevTransfers.map((tx) =>
-              tx.id === targetId ? { ...tx, status: newStatus } : tx
-            )
-          );
-        }
-      }
-    };
-    txEventSource.onerror = () => txEventSource.close();
+      // Escucha la actualización de transacciones en tiempo real
+      channel.bind("transaction-updated", (data: any) => {
+        console.log("⚡ [Portal Pusher] Transacción actualizada detectada:", data);
+        fetchPortalData(true); // Sincroniza los datos del usuario de forma inmediata
+      });
+    } else {
+      console.warn("⚠️ NEXT_PUBLIC_PUSHER_KEY no está definida en el cliente.");
+    }
 
     return () => {
-      ratesEventSource.close();
-      txEventSource.close();
+      if (pusherClient) {
+        pusherClient.unbind_all();
+        pusherClient.unsubscribe("operations-channel");
+        pusherClient.disconnect();
+      }
     };
   }, [fetchPortalData]);
 

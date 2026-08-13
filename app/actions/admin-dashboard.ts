@@ -4,13 +4,18 @@ import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { unstable_noStore as noStore } from "next/cache";
-import { globalEventStore } from '@/lib/eventsStore';
+import Pusher from 'pusher';
 
 if (!process.env.JWT_SECRET) {
   throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
 }
 
 const JWT_SECRET_KEY = new TextEncoder().encode(process.env.JWT_SECRET!);
+
+const cleanEnv = (val?: string) => {
+  if (!val) return '';
+  return val.replace(/^[^=]+=\s*/, '').replace(/^["']|["']$/g, '').trim();
+};
 
 export async function getAdminOperations() {
   noStore();
@@ -88,8 +93,7 @@ export async function updateTransactionStatusAction(
       finalNotes = `${finalNotes.trim()}`;
     }
 
-    // 🚀 Actualización en Neon PostgreSQL
-    const res = await query(
+   const res = await query(
       `UPDATE public.transactions 
        SET status = $1, processed_by = $2, internal_notes = COALESCE($3, internal_notes), updated_at = NOW() 
        WHERE id = $4 
@@ -103,15 +107,34 @@ export async function updateTransactionStatusAction(
       throw new Error("No se encontró la transacción a actualizar.");
     }
 
-    // ⚡ Emisión en tiempo real segura mediante el almacén global de eventos (SSE)
+    // ⚡ Emisión en tiempo real mediante Pusher con Telemetría Estricta
     try {
-      if (globalEventStore && typeof (globalEventStore as any).notifyAll === 'function') {
-        (globalEventStore as any).notifyAll(`update:${transactionId}|${newStatus}`);
-      } else if (globalEventStore && typeof (globalEventStore as any).broadcast === 'function') {
-        (globalEventStore as any).broadcast(`update:${transactionId}|${newStatus}`);
+      const appId = cleanEnv(process.env.PUSHER_APP_ID);
+      const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
+      const secret = cleanEnv(process.env.PUSHER_SECRET);
+      const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
+
+      console.log("🔍 [Pusher Debug Backend] Credenciales leídas:", {
+        appId: appId ? `CONFIGURADO (${appId})` : "VACÍO ❌",
+        key: key ? "CONFIGURADO ✅" : "VACÍO ❌",
+        secret: secret ? "CONFIGURADO ✅" : "VACÍO ❌",
+        cluster
+      });
+
+      if (appId && key && secret) {
+        const pusher = new Pusher({ appId, key, secret, cluster, useTLS: true });
+
+        await pusher.trigger('operations-channel', 'transaction-updated', {
+          transactionId,
+          status: newStatus,
+          timestamp: Date.now(),
+        });
+        console.log('✅ [Pusher Server] Evento "transaction-updated" emitido exitosamente al canal operations-channel');
+      } else {
+        console.error('❌ [Pusher Server] Faltan credenciales de entorno obligatorias para Pusher.');
       }
-    } catch (e) {
-      console.warn("Aviso SSE Broadcast:", e);
+    } catch (pusherErr: any) {
+      console.error('❌ [Pusher Error Detallado]:', pusherErr.message || pusherErr);
     }
 
     return { success: true, transaction: updatedTx };

@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { getAdminOperations, updateTransactionStatusAction } from "@/app/actions/admin-dashboard";
 import { ClientOperation, TransactionStatus } from "@/src/types/admin";
 import { AdminNavbar } from "@/app/admin/AdminNavbar";
+import Pusher from "pusher-js";
 import {
   Search,
   RefreshCw,
@@ -30,17 +31,15 @@ export function AdminContent({ userEmail }: AdminContentProps) {
   const [selectedOperation, setSelectedOperation] = useState<ClientOperation | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Estado de montaje para prevenir errores de hidratación en Next.js
   const [mounted, setMounted] = useState<boolean>(false);
-
   const [currentPage, setCurrentPage] = useState<number>(1);
-  //const [itemsPerPage] = useState<number>(10);
 
   // Estados para el Modal de Rechazo con Auditoría
   const [rejectModalOpen, setRejectModalOpen] = useState<boolean>(false);
   const [transactionToRejectId, setTransactionToRejectId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState<string>("");
-  const [itemsPerPage, setItemsPerPage] = useState<number>(10); // 👈 Asegúrate de que esté configurado así
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -80,47 +79,34 @@ export function AdminContent({ userEmail }: AdminContentProps) {
     }
   };
 
-   // ⚡ Sincronización en Tiempo Real Quirúrgica (In-Memory State Mutation - Cero Parpadeos)
+  // ⚡ Sincronización en Tiempo Real mediante Pusher (Canal de Operaciones)
   useEffect(() => {
-    // 1. Única carga inicial permitida al montar el componente
     fetchOperations();
 
-    // 2. Apertura del canal de Server-Sent Events (SSE)
-    const eventSource = new EventSource('/api/events');
+    let pusherClient: Pusher | null = null;
+    const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
 
-    eventSource.onmessage = (event) => {
-      if (event.data === 'ping' || event.data === 'connected') return;
+    if (pusherKey) {
+      pusherClient = new Pusher(pusherKey, { cluster: pusherCluster });
+      const channel = pusherClient.subscribe("operations-channel");
 
-      if (event.data.startsWith('update:')) {
-        const parts = event.data.split('|');
-        const targetId = parts[1];   // ID de la transacción modificada
-        const newStatus = parts[2];  // Nuevo estado
-
-        if (targetId && newStatus) {
-          console.log(`⚡ Actualización quirúrgica en memoria (Admin) para la orden: ${targetId}`);
-          
-          // Actualizamos el estado local de forma reactiva sin tocar la bandera 'loading'
-          setOperations((prevOps) =>
-            prevOps.map((op) =>
-              op.id === targetId ? { ...op, status: newStatus } : op
-            )
-          );
-        }
-        // 🛑 NOTA CRÍTICA: Eliminamos cualquier 'fetchOperations()' dentro del SSE del Admin
-        // para evitar bucles de recarga visual en la tabla.
-      }
-    };
-
-    eventSource.onerror = () => {
-      eventSource.close();
-    };
+      channel.bind("transaction-updated", (data: any) => {
+        console.log("⚡ [Pusher Admin] Transacción actualizada detectada:", data);
+        fetchOperations(); // Refresca de forma limpia y sincroniza métricas y tabla
+      });
+    } else {
+      console.warn("⚠️ NEXT_PUBLIC_PUSHER_KEY no está definida.");
+    }
 
     return () => {
-      eventSource.close();
+      if (pusherClient) {
+        pusherClient.unbind_all();
+        pusherClient.unsubscribe("operations-channel");
+        pusherClient.disconnect();
+      }
     };
   }, []);
-
-
 
   useEffect(() => {
     setCurrentPage(1);
@@ -140,7 +126,6 @@ export function AdminContent({ userEmail }: AdminContentProps) {
   const executeStatusUpdate = async (id: string, newStatus: TransactionStatus, internalNotes: string | null) => {
     const previousOperations = [...operations];
 
-    // Actualización optimista inmediata en memoria
     setOperations((prev) =>
       prev.map((op) => 
         op.id === id 
@@ -160,11 +145,10 @@ export function AdminContent({ userEmail }: AdminContentProps) {
       if (!res.success) {
         throw new Error(res.error || "Error al actualizar estado");
       }
-      // 🚫 CERO fetches locales aquí. El cambio visual ya ocurrió al instante.
     } catch (err: any) {
       console.error("❌ Error al actualizar en servidor:", err);
       alert(`Error actualizando estado: ${err.message}`);
-      setOperations(previousOperations); // Rollback de seguridad
+      setOperations(previousOperations);
     } finally {
       setUpdatingId(null);
     }
@@ -263,13 +247,13 @@ export function AdminContent({ userEmail }: AdminContentProps) {
 
           <div className="flex items-center gap-3">
             <button
-  onClick={fetchOperations}
-  disabled={mounted ? loading : false}
-  className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
->
-  <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
-  Actualizar
-</button>
+              onClick={fetchOperations}
+              disabled={mounted ? loading : false}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-medium text-slate-300 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
+              Actualizar
+            </button>
           </div>
         </div>
 
@@ -297,32 +281,31 @@ export function AdminContent({ userEmail }: AdminContentProps) {
           </div>
         </div>
 
-        {/* BUSCADOR Y FILTROS (Estilo unificado y corporativo) */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-            <div className="relative w-full md:w-96">
-              <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Buscar por código, cliente o correo..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-11 pr-4 text-xs text-white outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            {/* 🎨 Filtro rediseñado con el mismo estilo corporativo de los selectores de la tabla */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-emerald-500/50 hover:border-emerald-400 text-xs font-semibold text-emerald-300 outline-none cursor-pointer shadow-lg transition-all"
-            >
-              <option value="TODOS" className="bg-slate-900 text-slate-200">TODOS LOS ESTADOS</option>
-              <option value="PENDIENTE" className="bg-slate-900 text-amber-400">PENDIENTE</option>
-              <option value="EN_PROCESO" className="bg-slate-900 text-sky-400">EN PROCESO</option>
-              <option value="COMPLETADO" className="bg-slate-900 text-emerald-400">COMPLETADA</option>
-              <option value="RECHAZADO" className="bg-slate-900 text-rose-400">RECHAZADA</option>
-            </select>
+        {/* BUSCADOR Y FILTROS */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Buscar por código, cliente o correo..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-11 pr-4 text-xs text-white outline-none focus:border-emerald-500"
+            />
           </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2.5 rounded-xl bg-slate-900 border border-emerald-500/50 hover:border-emerald-400 text-xs font-semibold text-emerald-300 outline-none cursor-pointer shadow-lg transition-all"
+          >
+            <option value="TODOS" className="bg-slate-900 text-slate-200">TODOS LOS ESTADOS</option>
+            <option value="PENDIENTE" className="bg-slate-900 text-amber-400">PENDIENTE</option>
+            <option value="EN_PROCESO" className="bg-slate-900 text-sky-400">EN PROCESO</option>
+            <option value="COMPLETADO" className="bg-slate-900 text-emerald-400">COMPLETADA</option>
+            <option value="RECHAZADO" className="bg-slate-900 text-rose-400">RECHAZADA</option>
+          </select>
+        </div>
 
         {/* TABLA PRINCIPAL */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl shadow-xl overflow-hidden min-h-[520px] flex flex-col justify-between">
@@ -410,18 +393,16 @@ export function AdminContent({ userEmail }: AdminContentProps) {
             </table>
           </div>
 
-         {/* PAGINACIÓN Y CONTROL DE FILAS PROFESIONAL */}
+          {/* PAGINACIÓN */}
           {!loading && filteredOperations.length > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-800 bg-slate-950/60 text-xs text-slate-400">
-              
-              {/* Selector de cantidad de registros por página y conteo */}
               <div className="flex items-center gap-3">
                 <span>Mostrando registros:</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => {
                     setItemsPerPage(Number(e.target.value));
-                    setCurrentPage(1); // Reiniciar a la primera página al cambiar el límite
+                    setCurrentPage(1);
                   }}
                   className="px-3 py-1.5 rounded-xl bg-slate-900 border border-emerald-500/50 hover:border-emerald-400 text-xs font-semibold text-emerald-300 outline-none cursor-pointer shadow-lg transition-all"
                 >
@@ -437,7 +418,6 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                 </span>
               </div>
 
-              {/* Controles de navegación de página */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
@@ -459,12 +439,11 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                   Siguiente <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
-
             </div>
           )}
         </div>
 
-        {/* MODAL DETALLE DE OPERACIÓN (El de la hoja / icono de archivo) */}
+        {/* MODAL DETALLE DE OPERACIÓN */}
         {selectedOperation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-6 text-slate-200 shadow-2xl">
@@ -536,7 +515,7 @@ export function AdminContent({ userEmail }: AdminContentProps) {
           </div>
         )}
 
-        {/* MODAL DE RECHAZO (Diseño Corporativo y Pulido) */}
+        {/* MODAL DE RECHAZO */}
         {rejectModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
             <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 text-slate-200 shadow-2xl">
