@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { logoutAction } from '@/app/actions/auth';
@@ -28,6 +28,11 @@ import { getPortalData, updateUserProfileAndPasswordAction } from "@/app/actions
 export default function PortalClientePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+
+  // 🛡️ Referencia mutable para que Pusher conozca al usuario sin re-ejecutar el useEffect en bucle
+  const userRef = useRef<any>(null);
+  userRef.current = user;
+
   const [profileName, setProfileName] = useState<string>("Cliente");
   const [transfers, setTransfers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,11 +184,12 @@ export default function PortalClientePage() {
         fetchPortalData(true);
       });
 
-      // 2. 🛡️ Escucha inhabilitación o cambios de estado de usuario (Kick-out automático)
+      // 2. 🛡️ Escucha inhabilitación o cambios de estado de usuario (Kick-out automático usando userRef)
       channel.bind("user-status-changed", (data: any) => {
         console.log("🛡️ [Portal Seguridad Pusher] Evento de estado de usuario recibido:", data);
         
-        if (user && data.userId === user.id && data.is_active === false) {
+        const currentUser = userRef.current;
+        if (currentUser && data.userId === currentUser.id && data.is_active === false) {
           console.warn("🚨 Tu cuenta ha sido inhabilitada por un administrador. Cerrando sesión...");
           router.push("/login?error=cuenta_inhabilitada");
         }
@@ -199,7 +205,7 @@ export default function PortalClientePage() {
         pusherClient.disconnect();
       }
     };
-  }, [fetchPortalData, user, router]);
+  }, [fetchPortalData, router]); // ✅ Eliminado 'user' de las dependencias para evitar el bucle
 
   const completedTransfersCount = transfers.filter((tx) => {
     const status = (tx.status || "").toUpperCase();
