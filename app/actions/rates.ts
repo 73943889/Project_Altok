@@ -24,22 +24,22 @@ export async function getRatesAction() {
 export async function updateRatesAction(updates: { key: string; value: number }[]) {
   noStore();
   try {
-    // 1. Capa de Persistencia Transaccional (Base de Datos Crítica)
+    // 1. Capa de Persistencia con Tipado Explícito en SQL (Cast ::numeric y ::text)
     for (const item of updates) {
       await query(
         `INSERT INTO public.site_config (key, value, updated_at) 
-         VALUES ($1, $2, NOW()) 
+         VALUES ($1::text, $2::numeric, NOW()) 
          ON CONFLICT (key) 
-         DO UPDATE SET value = $2, updated_at = NOW()`,
+         DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
         [item.key, item.value]
       );
 
       if (item.key === 'transfer_commission_bank') {
         await query(
           `INSERT INTO public.site_config (key, value, updated_at) 
-           VALUES ('transfer_commission', $2, NOW()) 
+           VALUES ($1::text, $2::numeric, NOW()) 
            ON CONFLICT (key) 
-           DO UPDATE SET value = $2, updated_at = NOW()`,
+           DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
           ['transfer_commission', item.value]
         );
       }
@@ -70,11 +70,8 @@ export async function updateRatesAction(updates: { key: string; value: number }[
           timestamp: Date.now(),
         });
         console.log('✅ [Pusher Server] Evento "rates-updated" emitido exitosamente');
-      } else {
-        console.warn('⚠️ [Pusher Server] Omitido: Faltan credenciales de entorno en el servidor.');
       }
     } catch (pusherErr: any) {
-      // Degracación elegante: Si Pusher falla, no tiramos abajo la operación de guardado en BD
       console.error('❌ [Pusher Error No Fatal]:', pusherErr.message || pusherErr);
     }
 
