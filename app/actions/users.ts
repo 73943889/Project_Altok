@@ -1,7 +1,8 @@
-"use server";
+'use server';
 
 import { query } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import Pusher from 'pusher'; // ✅ Paquete correcto para el entorno de servidor (Node.js)
 
 export async function getAdminUsersAction() {
   try {
@@ -19,7 +20,6 @@ export async function getAdminUsersAction() {
     
     const rows = Array.isArray(result) ? result : result?.rows || [];
 
-    // Mapeo defensivo para asegurar que is_active sea estrictamente booleano (true / false)
     const users = rows.map((u: any) => ({
       ...u,
       is_active: u.is_active === true || u.is_active === 't' || u.is_active === 1
@@ -46,13 +46,17 @@ export async function updateUserRoleAction(userId: string, newRole: "ADMIN" | "C
   }
 }
 
+const cleanEnv = (val?: string) => {
+  if (!val) return '';
+  return val.replace(/^[^=]+=\s*/, '').replace(/^["']|["']$/g, '').trim();
+};
+
 export async function toggleUserStatusAction(userId: string, currentStatus: boolean) {
   try {
     const newStatus = !currentStatus; // Invierte el booleano actual
     
     console.log(`🔄 Actualizando usuario ID: ${userId} a is_active: ${newStatus}`);
 
-    // Ejecutamos el update explícito en Neon
     const res = await query(
       `UPDATE public.users SET is_active = $1 WHERE id = $2 RETURNING id, is_active`,
       [newStatus, userId]
@@ -62,6 +66,29 @@ export async function toggleUserStatusAction(userId: string, currentStatus: bool
 
     if (!updatedRows || updatedRows.length === 0) {
       throw new Error(`No se encontró ningún usuario con el ID: ${userId} para actualizar.`);
+    }
+
+    // ⚡ Emisión en tiempo real mediante Pusher para expulsar al cliente si fue inhabilitado
+    try {
+      const appId = cleanEnv(process.env.PUSHER_APP_ID);
+      const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
+      const secret = process.env.PUSHER_SECRET;
+      const cluster = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_CLUSTER) || 'mt1';
+
+      if (appId && key && secret) {
+        const pusher = new Pusher({ appId, key, secret, cluster, useTLS: true });
+
+        await pusher.trigger('operations-channel', 'user-status-changed', {
+          userId,
+          is_active: newStatus,
+          timestamp: Date.now(),
+        });
+        console.log('✅ [Pusher Server] Evento "user-status-changed" emitido exitosamente');
+      } else {
+        console.warn('⚠️ [Pusher Server] Omitido: Faltan credenciales de entorno en el servidor.');
+      }
+    } catch (pusherErr: any) {
+      console.error('❌ [Pusher Error No Fatal]:', pusherErr.message || pusherErr);
     }
 
     revalidatePath("/admin/users");

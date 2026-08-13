@@ -149,7 +149,7 @@ export default function PortalClientePage() {
     }
   }, [router]);
 
-  // ⚡ Sincronización en Tiempo Real unificada con Pusher
+  // ⚡ Sincronización en Tiempo Real unificada con Pusher (Transacciones y Seguridad de Cuenta)
   useEffect(() => {
     fetchPortalData();
 
@@ -161,10 +161,20 @@ export default function PortalClientePage() {
       pusherClient = new Pusher(pusherKey, { cluster: pusherCluster });
       const channel = pusherClient.subscribe("operations-channel");
 
-      // Escucha la actualización de transacciones en tiempo real
+      // 1. Escucha la actualización de transacciones en tiempo real
       channel.bind("transaction-updated", (data: any) => {
         console.log("⚡ [Portal Pusher] Transacción actualizada detectada:", data);
-        fetchPortalData(true); // Sincroniza los datos del usuario de forma inmediata
+        fetchPortalData(true);
+      });
+
+      // 2. 🛡️ Escucha inhabilitación o cambios de estado de usuario (Kick-out automático)
+      channel.bind("user-status-changed", (data: any) => {
+        console.log("🛡️ [Portal Seguridad Pusher] Evento de estado de usuario recibido:", data);
+        
+        if (user && data.userId === user.id && data.is_active === false) {
+          console.warn("🚨 Tu cuenta ha sido inhabilitada por un administrador. Cerrando sesión...");
+          router.push("/login?error=cuenta_inhabilitada");
+        }
       });
     } else {
       console.warn("⚠️ NEXT_PUBLIC_PUSHER_KEY no está definida en el cliente.");
@@ -177,7 +187,7 @@ export default function PortalClientePage() {
         pusherClient.disconnect();
       }
     };
-  }, [fetchPortalData]);
+  }, [fetchPortalData, user, router]);
 
   const completedTransfersCount = transfers.filter((tx) => {
     const status = (tx.status || "").toUpperCase();
