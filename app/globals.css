@@ -25,20 +25,23 @@
     background-color: #020617;
     color: #f8fafc;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    overflow-x: hidden;
   }
 
   html {
     scroll-behavior: smooth;
-    scroll-padding-top: 5rem; 
+    scroll-padding-top: 5rem;
   }
+
   #calculadora {
-  scroll-margin-top: 7rem; /* Equivalente a la altura del header (h-24 o h-28) + padding de respiro */
-}
+    scroll-margin-top: 7rem; /* Altura del header + respiro visual */
+  }
 }
 
-/* 🎨 Utilidades personalizadas para Altok€ (Scrollbars elegantes) */
+/* 🎨 SCROLLBARS CORPORATIVOS ALTOK€ (Ultra-Elegantes y Compatibles) */
 @layer utilities {
-  /* Ocultar barra de desplazamiento manteniendo el scroll funcional */
+  
+  /* Ocultar barra de desplazamiento manteniendo funcionalidad */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -47,19 +50,30 @@
     scrollbar-width: none;
   }
 
-  /* Scroll personalizado estilizado en tonos Slate y Emerald corporativos */
+  /* 💎 Scrollbar Custom para Modales y Paneles (Chrome, Edge, Safari, Brave) */
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
+
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.6); /* slate-950 con transparencia */
-    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.8); /* slate-950 sólido */
+    border-radius: 9999px;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(52, 211, 153, 0.3); /* emerald-400 suave */
-    border-radius: 8px;
+    background: #10b981; /* emerald-500 sólido para alto contraste y elegancia */
+    border-radius: 9999px;
+    border: 1px solid rgba(15, 23, 42, 0.9);
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(52, 211, 153, 0.6);
+    background: #34d399; /* emerald-400 para feedback de hover */
+  }
+
+  /* 🦊 Compatibilidad Estricta para Firefox */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #10b981 rgba(15, 23, 42, 0.8);
   }
 }

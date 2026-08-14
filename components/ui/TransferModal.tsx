@@ -3,8 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createTransactionAction, updateTransactionBankAction } from "@/app/actions/transaction";
-import { ShieldAlert } from "lucide-react";
-
+import { ShieldAlert, Phone } from "lucide-react";
 interface TransferModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -53,13 +52,14 @@ const DESTINATION_OPTIONS: DestinationOption[] = [
 
 interface CountryCodeOption {
   code: string;
+  flag: string;
   label: string;
 }
 
 const COUNTRY_CODES: CountryCodeOption[] = [
-  { code: "+34", label: "+34 (España)" },
-  { code: "+51", label: "+51 (Perú)" },
-  { code: "+1", label: "+1 (EE.UU.)" },
+  { code: "+51", flag: "🇵🇪", label: "+51" },
+  { code: "+34", flag: "🇪🇸", label: "+34" },
+  { code: "+1",  flag: "🇺🇸", label: "+1" },
 ];
 
 interface DocumentTypeOption {
@@ -519,7 +519,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-hidden">
-      <div className="relative w-full max-w-lg max-h-[85vh] rounded-2xl bg-[#0f172a] border border-slate-800 p-6 text-white shadow-2xl flex flex-col my-auto overflow-hidden">
+     <div className="relative w-full max-w-lg max-h-[88vh] rounded-3xl bg-slate-900/95 border border-slate-800/90 p-6 sm:p-8 text-white shadow-2xl flex flex-col my-auto overflow-hidden backdrop-blur-xl">
         
         <button
           type="button"
@@ -529,7 +529,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
           ✕
         </button>
 
-        <div className="overflow-y-auto pr-2 custom-scrollbar space-y-4 flex-1">
+        <div className="overflow-y-auto pr-3 pl-1 my-1 custom-scrollbar space-y-4 flex-1 scroll-smooth">
           {!isCompleted ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <h2 className="text-xl font-bold text-center">Datos de la Remesa</h2>
@@ -620,28 +620,28 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     </button>
 
                     {isDocTypeOpen && (
-                      <div className="absolute left-0 bottom-full mb-1.5 w-full rounded-xl bg-slate-900 border border-slate-700 shadow-2xl z-50 p-1.5 space-y-1">
-                        {DOCUMENT_TYPES.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => {
-                              setFormData({ ...formData, documentType: item.id });
-                              setIsDocTypeOpen(false);
-                              if (formErrors.documentType) setFormErrors({ ...formErrors, documentType: undefined });
-                            }}
-                            className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
-                              formData.documentType === item.id
-                                ? "bg-emerald-500/20 text-emerald-400 font-semibold"
-                                : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                            }`}
-                          >
-                            <span>{item.label}</span>
-                            {formData.documentType === item.id && <span>✓</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="absolute left-0 top-full mt-1.5 w-full rounded-xl bg-slate-900 border border-slate-700 shadow-2xl z-50 p-1.5 space-y-1">
+                      {DOCUMENT_TYPES.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, documentType: item.id });
+                            setIsDocTypeOpen(false);
+                            if (formErrors.documentType) setFormErrors({ ...formErrors, documentType: undefined });
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
+                            formData.documentType === item.id
+                              ? "bg-emerald-500/20 text-emerald-400 font-semibold"
+                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                          }`}
+                      >
+                        <span>{item.label}</span>
+                        {formData.documentType === item.id && <span>✓</span>}
+                      </button>
+    ))}
+  </div>
+)}
                   </div>
 
                   <input
@@ -663,73 +663,87 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   </p>
                 )}
 
-                {/* TELÉFONO / CÓDIGO DE PAÍS */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300 block">
-                    Teléfono / WhatsApp de Contacto
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="relative w-36 shrink-0" ref={countryCodeDropdownRef}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCountryCodeOpen(!isCountryCodeOpen);
-                          setIsDestinationOpen(false);
-                          setIsDocTypeOpen(false);
-                        }}
-                        className="w-full h-[42px] px-3 rounded-lg bg-slate-900 border border-slate-700 text-left text-xs flex items-center justify-between text-slate-200 focus:border-emerald-500 outline-none cursor-pointer"
-                      >
-                        <span className="truncate">{selectedCountryObj ? selectedCountryObj.label : "Elegir Código"}</span>
-                        <span className="text-[10px] text-slate-400 ml-1">▼</span>
-                      </button>
+         {/* TELÉFONO / WHATSAPP DE CONTACTO (Alineación Horizontal Inline Impresionable) */}
+<div className="space-y-1">
+  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+    TELÉFONO / CELULAR
+  </label>
+  
+  <div className="relative flex items-center bg-slate-950 border border-slate-800 rounded-2xl focus-within:border-emerald-500 transition-all shadow-inner">
+    
+    {/* Contenedor del Dropdown de País */}
+    <div className="relative flex items-center border-r border-slate-800 bg-slate-900/60 rounded-l-2xl z-30 shrink-0" ref={countryCodeDropdownRef}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsCountryCodeOpen((prev) => !prev);
+          setIsDestinationOpen(false);
+          setIsDocTypeOpen(false);
+        }}
+        className="flex flex-row items-center gap-1.5 px-3 py-3 text-xs font-bold text-emerald-400 font-mono cursor-pointer outline-none hover:bg-slate-800/50 transition-colors rounded-l-2xl whitespace-nowrap"
+      >
+        <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+        <span className="text-sm leading-none">{selectedCountryObj?.flag || "🇵🇪"}</span>
+        <span className="leading-none">{formData.countryCode || "+51"}</span>
+        <span className="text-[10px] text-emerald-400 leading-none">▼</span>
+      </button>
 
-                      {isCountryCodeOpen && (
-                        <div className="absolute left-0 bottom-full mb-1.5 w-full rounded-xl bg-slate-900 border border-slate-700 shadow-2xl z-50 p-1.5 space-y-1">
-                          {COUNTRY_CODES.map((item) => (
-                            <button
-                              key={item.code}
-                              type="button"
-                              onClick={() => {
-                                setFormData({ ...formData, countryCode: item.code });
-                                setIsCountryCodeOpen(false);
-                                if (formErrors.countryCode) setFormErrors({ ...formErrors, countryCode: undefined });
-                              }}
-                              className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
-                                formData.countryCode === item.code
-                                  ? "bg-emerald-500/20 text-emerald-400 font-semibold"
-                                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                              }`}
-                            >
-                              <span>{item.label}</span>
-                              {formData.countryCode === item.code && <span>✓</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+      {/* Menú Desplegable flotante */}
+      {isCountryCodeOpen && (
+        <div className="absolute left-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-50 p-1.5 space-y-1 font-mono">
+          {COUNTRY_CODES.map((item) => (
+            <button
+              key={item.code}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setFormData((prev) => ({ ...prev, countryCode: item.code }));
+                setIsCountryCodeOpen(false);
+                if (formErrors.countryCode) {
+                  setFormErrors((prev) => ({ ...prev, countryCode: undefined }));
+                }
+              }}
+              className={`w-full text-left px-3 py-2 text-xs rounded-xl transition-colors cursor-pointer flex flex-row items-center justify-between ${
+                formData.countryCode === item.code
+                  ? "bg-emerald-500/20 text-emerald-400 font-bold"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>{item.flag}</span>
+                <span>{item.code}</span>
+              </span>
+              {formData.countryCode === item.code && <span className="text-emerald-400 font-bold">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
 
-                    <div className="relative flex-1">
-                      <input
-                        ref={phoneInputRef}
-                        type="tel"
-                        name="phone"
-                        placeholder="600123456 / 999888777"
-                        value={formData.phone}
-                        onInput={(e) => {
-                          const target = e.target as HTMLInputElement;
-                          target.value = target.value.replace(/\D/g, "");
-                        }}
-                        onChange={handleChange}
-                        onKeyDown={(e) => {
-                          if (["e", "E", "+", "-", "."].includes(e.key)) {
-                            e.preventDefault();
-                          }
-                        }}
-                        className="w-full h-[42px] px-4 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition-all shadow-inner"
-                      />
-                    </div>
-                  </div>
-                </div>
+    {/* Input de Número Telefónico */}
+    <input
+      ref={phoneInputRef}
+      type="tel"
+      name="phone"
+      placeholder="987 654 321"
+      value={formData.phone}
+      onInput={(e) => {
+        const target = e.target as HTMLInputElement;
+        target.value = target.value.replace(/\D/g, "");
+      }}
+      onChange={handleChange}
+      onKeyDown={(e) => {
+        if (["e", "E", "+", "-", "."].includes(e.key)) {
+          e.preventDefault();
+        }
+      }}
+      className="w-full bg-transparent text-xs text-white placeholder-slate-600 px-4 py-3 outline-none font-mono rounded-r-2xl"
+    />
+  </div>
+</div>
 
                 {/* ERROR INLINE TELÉFONO */}
                 {(formErrors.countryCode || formErrors.phone) && (
@@ -823,7 +837,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                         className="w-full h-[42px] px-3 rounded-lg bg-slate-900 border border-slate-700 text-left text-xs flex items-center justify-between text-slate-200 focus:border-emerald-500 outline-none cursor-pointer"
                       >
                         <span className="truncate">
-                          {selectedDestinationObj ? selectedDestinationObj.name : (formData.destinationType === "bank" ? "Selecciona Banco" : "Selecciona Wallet")}
+                          {selectedDestinationObj ? selectedDestinationObj.name : (formData.destinationType === "bank" ? "Elegir Banco" : "Elegir Wallet")}
                         </span>
                         <span className="text-xs text-slate-400 ml-1">▼</span>
                       </button>

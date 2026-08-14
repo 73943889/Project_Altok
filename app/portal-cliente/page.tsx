@@ -13,6 +13,8 @@ import {
   CheckCircle2, 
   User, 
   ShieldCheck, 
+  Phone,
+  ChevronDown,
   PlusCircle, 
   Search,
   Filter,
@@ -595,38 +597,47 @@ export default function PortalClientePage() {
                   )}
                 </div>
 
-                {/* TELÉFONO / WHATSAPP */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                    Teléfono / WhatsApp
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <select
-                      value={countryCodeInput}
-                      onChange={(e) => setCountryCodeInput(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono cursor-pointer appearance-none pr-6"
-                    >
-                      <option value="+34" className="bg-slate-900 text-white">🇪🇸 +34</option>
-                      <option value="+51" className="bg-slate-900 text-white">🇵🇪 +51</option>
-                      <option value="+1" className="bg-slate-900 text-white">🇺🇸 +1</option>
-                      <option value="+54" className="bg-slate-900 text-white">🇦🇷 +54</option>
-                      <option value="+57" className="bg-slate-900 text-white">🇨🇴 +57</option>
-                      <option value="+56" className="bg-slate-900 text-white">🇨🇱 +56</option>
-                    </select>
+                {/* TELÉFONO / CELULAR */}
+<div className="space-y-1.5">
+  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+    TELÉFONO / CELULAR
+  </label>
+  <div className="relative flex items-center bg-slate-950 border border-slate-800 rounded-2xl focus-within:border-emerald-500 transition-all overflow-hidden shadow-inner">
+    
+    {/* Contenedor Estilizado del Selector de País */}
+    <div className="relative flex items-center border-r border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 transition-colors">
+      <span className="absolute left-3 text-slate-400 pointer-events-none">
+        <Phone className="w-4 h-4 text-emerald-400" />
+      </span>
+      
+      <select
+  value={countryCodeInput}
+  onChange={(e) => setCountryCodeInput(e.target.value)}
+  className="bg-transparent text-emerald-400 text-xs font-bold pl-9 pr-7 py-3.5 outline-none cursor-pointer appearance-none z-10 font-mono"
+>
+        <option value="+51" className="bg-slate-900 text-white py-2">PE +51</option>
+        <option value="+34" className="bg-slate-900 text-white py-2">ES +34</option>
+        <option value="+1"  className="bg-slate-900 text-white py-2">US +1</option>
+      </select>
 
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={phoneInput}
-                      placeholder="600123456"
-                      onChange={(e) => {
-                        const numericVal = e.target.value.replace(/\D/g, "");
-                        setPhoneInput(numericVal);
-                      }}
-                      className="col-span-2 w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
-                    />
-                  </div>
-                </div>
+      {/* Flecha personalizada */}
+      <span className="absolute right-2.5 text-slate-500 pointer-events-none">
+        <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
+      </span>
+    </div>
+
+    {/* Input de Número Teléfonico */}
+    <input
+      type="text"
+      inputMode="numeric"
+      placeholder="987 654 321"
+      value={phoneInput}
+      onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, ""))}
+      required
+      className="w-full bg-transparent text-white text-xs font-mono px-4 py-3.5 outline-none placeholder:text-slate-600"
+    />
+  </div>
+</div>
 
                 {/* CORREO ELECTRÓNICO */}
                 <div>

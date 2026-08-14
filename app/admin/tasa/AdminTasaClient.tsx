@@ -37,29 +37,61 @@ export default function AdminTasaClient({ initialRates, userEmail }: { initialRa
   
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const handleRateChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
-    let val = e.target.value.replace(/,/g, ".");
-    if (val === "") {
-      setter("");
-      return;
-    }
-    val = val.replace(/[^0-9.]/g, "");
-    const parts = val.split(".");
-    if (parts.length > 2) return;
-    setter(val);
-  };
+  const handleRateChange = (
+  e: React.ChangeEvent<HTMLInputElement>,
+  setter: (val: string) => void
+) => {
+  // Tomamos únicamente los números que el usuario ha escrito
+  let digits = e.target.value.replace(/\D/g, "");
 
-  const handleCommissionChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
-    let val = e.target.value.replace(/,/g, ".");
-    if (val === "") {
-      setter("");
-      return;
-    }
-    val = val.replace(/[^0-9.]/g, "");
+  // Permitir borrar completamente el campo
+  if (digits === "") {
+    setter("");
+    return;
+  }
+
+  // Máximo 5 dígitos:
+  // 1 antes del decimal + 4 después
+  digits = digits.slice(0, 5);
+
+  // Insertar automáticamente el punto después del primer dígito
+  if (digits.length === 1) {
+    setter(digits);
+  } else {
+    setter(`${digits[0]}.${digits.slice(1)}`);
+  }
+};
+
+  const handleCommissionChange = (
+  e: React.ChangeEvent<HTMLInputElement>,
+  setter: (val: string) => void
+) => {
+  let val = e.target.value.replace(/,/g, ".");
+
+  if (val === "") {
+    setter("");
+    return;
+  }
+
+  // Solo números y punto
+  val = val.replace(/[^0-9.]/g, "");
+
+  // Si ya tiene punto decimal, no agregar otro
+  if (val.includes(".")) {
     const parts = val.split(".");
     if (parts.length > 2) return;
+
     setter(val);
-  };
+    return;
+  }
+
+  // A partir de 2 dígitos, insertar el punto antes del último dígito
+  if (val.length >= 2) {
+    val = val.slice(0, -1) + "." + val.slice(-1);
+  }
+
+  setter(val);
+};
 
   const handleSaveRates = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,6 +283,7 @@ export default function AdminTasaClient({ initialRates, userEmail }: { initialRa
                 <input 
                   type="text"
                   inputMode="decimal"
+                  maxLength={6}
                   value={commissionBank}
                   onChange={(e) => handleCommissionChange(e, setCommissionBank)}
                   required
@@ -282,6 +315,7 @@ export default function AdminTasaClient({ initialRates, userEmail }: { initialRa
                 <input 
                   type="text"
                   inputMode="decimal"
+                  maxLength={6}
                   value={commissionWallet}
                   onChange={(e) => handleCommissionChange(e, setCommissionWallet)}
                   required
