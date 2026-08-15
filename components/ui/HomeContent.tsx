@@ -272,7 +272,7 @@ export function HomeContent({ initialSession, initialProfileName }: HomeContentP
               </div>
               <span className="font-bold">
                 {loadingTasa 
-                  ? "Cargando..." 
+                  ? "Actualizando tasa..." 
                   : isSendingOrigin 
                     ? `1 ${originCurrency} = ${formatRate4(activeBuyRate)} PEN` 
                     : `1 PEN = ${formatRate4(activeSellRate > 0 ? 1 / activeSellRate : 0)} ${originCurrency}`}

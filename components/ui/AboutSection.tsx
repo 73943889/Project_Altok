@@ -19,8 +19,12 @@ export function AboutSection() {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-tight mb-6">
             Conectando tus raíces con <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">el mundo</span>
           </h2>
-          <p className="text-slate-300 text-base sm:text-lg leading-relaxed">
-            En <strong className="text-white">Altok€!</strong> somos una fintech de origen peruano diseñada para romper las barreras financieras de los migrantes. Facilitamos envíos de dinero seguros, transparentes y a la tasa real entre <span className="text-emerald-400 font-semibold">Perú, España y Estados Unidos</span>.
+          <p className="text-slate-300 text-base sm:text-lg leading-relaxed text-justify">
+            En <strong className="text-white">Altok€!</strong> somos una fintech peruana enfocada en hacer más simple el cambio de divisas y el envío de dinero.
+
+Permitimos realizar operaciones de forma segura y transparente, con tasas competitivas, entre <span className="text-emerald-400 font-semibold">Perú y España, y Perú y Estados Unidos tanto de ida como de vuelta.</span><br />
+
+ En <strong className="text-white">Altok€!</strong> buscamos que cambiar y enviar dinero sea fácil, rápido y claro, para que nuestros usuarios sepan exactamente cuánto envían, cuánto reciben y a qué tasa se realiza la operación.
           </p>
         </div>
 

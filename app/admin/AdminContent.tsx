@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUpRight,
+  Tag,
 } from "lucide-react";
 
 interface AdminContentProps {
@@ -39,6 +40,68 @@ export function AdminContent({ userEmail }: AdminContentProps) {
   const [transactionToRejectId, setTransactionToRejectId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState<string>("");
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+
+
+// 🏷️ Catálogo UNIFICADO de motivos de rechazo (Iniciales + Nuevos KYC / Financieros)
+const PRESET_REASONS = [
+  // --- MOTIVOS INICIALES ---
+  {
+    id: "COMPROBANTE_ILEGIBLE_BASE",
+    label: "Comprobante ilegible",
+    text: "Comprobante ilegible o poco claro.",
+  },
+  {
+    id: "MONTO_NO_COINCIDE_BASE",
+    label: "Monto no coincide",
+    text: "El monto depositado no coincide con la transferencia.",
+  },
+  {
+    id: "NO_REALIZO_ABONO",
+    label: "No realizó abono",
+    text: "No realizó abono a la cuenta de recaudo.",
+  },
+
+  // --- 1. PROBLEMAS CON EL COMPROBANTE DE PAGO (VOUCHER) ---
+  {
+    id: "VOUCHER_ILEGIBLE",
+    label: "Voucher incompleto/recortado",
+    text: "El comprobante adjunto no es legible o está incompleto.",
+  },
+  {
+    id: "MONTO_INCORRECTO",
+    label: "Monto incorrecto",
+    text: "El monto del comprobante no coincide con el total de la orden.",
+  },
+  {
+    id: "CUENTA_RECAUDO_INCORRECTA",
+    label: "Cuenta de recaudo errónea",
+    text: "El depósito fue realizado a una cuenta bancaria no correspondiente.",
+  },
+
+  // --- 2. INCONSISTENCIAS EN DATOS FINANCIEROS / BENEFICIARIO ---
+  {
+    id: "CUENTA_DESTINO_INVALIDA",
+    label: "Cuenta destino inválida",
+    text: "El número de cuenta, CCI o teléfono de destino no es válido o está inactivo.",
+  },
+  {
+    id: "TITULARIDAD_NO_COINCIDE",
+    label: "Titularidad no coincide",
+    text: "El nombre del titular en la cuenta bancaria de destino no coincide con el registrado.",
+  },
+
+  // --- 3. CUMPLIMIENTO, REGULACIÓN Y VERIFICACIÓN KYC ---
+  {
+    id: "TRANSFERENCIA_DUPLICADA",
+    label: "Transferencia duplicada",
+    text: "Ya existe una orden procesada con este mismo número de operación.",
+  },
+  {
+    id: "OPERACION_FUERA_DE_TIEMPO",
+    label: "Fuera de tiempo límite",
+    text: "Comprobante fuera de la ventana de tiempo límite permitida.",
+  },
+];
 
   useEffect(() => {
     setMounted(true);
@@ -515,10 +578,12 @@ export function AdminContent({ userEmail }: AdminContentProps) {
           </div>
         )}
 
-        {/* MODAL DE RECHAZO */}
+        {/* MODAL DE RECHAZO CON SELECCIÓN RÁPIDA + EDICIÓN LIBRE */}
         {rejectModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 text-slate-200 shadow-2xl">
+            <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 text-slate-200 shadow-2xl">
+              
+              {/* Encabezado */}
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
@@ -526,7 +591,7 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white tracking-wide">Motivo de Rechazo</h3>
-                    <p className="text-[11px] text-slate-400">Esta observación se notificará al cliente.</p>
+                    <p className="text-[11px] text-slate-400">Esta observación se notificará al cliente en su portal.</p>
                   </div>
                 </div>
                 <button 
@@ -537,19 +602,49 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                 </button>
               </div>
 
+              {/* 1. OPCIONES DE SELECCIÓN RÁPIDA (CHIPS) */}
               <div className="space-y-2">
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Detalle del Motivo
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Selección Rápida de Motivo</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {PRESET_REASONS.map((preset) => {
+                    const isSelected = rejectionReasonInput === preset.text;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setRejectionReasonInput(preset.text)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                          isSelected
+                            ? "bg-rose-500/20 border-rose-500/60 text-rose-300 shadow-md shadow-rose-500/10 font-bold"
+                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. CUADRO DE TEXTO (PERMITE RELLENO Y EDICIÓN COMPLETA) */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Detalle del Motivo / Edición Personalizada</span>
                 </label>
                 <textarea
                   rows={4}
                   value={rejectionReasonInput}
                   onChange={(e) => setRejectionReasonInput(e.target.value)}
                   placeholder="Ej. Comprobante ilegible, monto no coincide con la transferencia..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-rose-500 transition-all resize-none shadow-inner"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-white outline-none focus:border-rose-500 transition-all resize-none shadow-inner font-sans"
                 />
               </div>
 
+              {/* Botones de Acción */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800/80">
                 <button 
                   onClick={() => setRejectModalOpen(false)} 
@@ -564,6 +659,7 @@ export function AdminContent({ userEmail }: AdminContentProps) {
                   Confirmar Rechazo
                 </button>
               </div>
+
             </div>
           </div>
         )}

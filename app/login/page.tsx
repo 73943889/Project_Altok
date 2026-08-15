@@ -2,10 +2,9 @@
 
 import { useState, useTransition, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, Mail, ArrowRight, Building2, AlertCircle, Loader2 } from "lucide-react";
+import { Lock, Mail, ArrowRight, Building2, AlertCircle, Loader2,Eye, EyeOff } from "lucide-react";
 import { loginAction } from "@/app/actions/auth";
 import Link from "next/link";
-
 function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -15,7 +14,7 @@ function LoginFormContent() {
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isPending, startTransition] = useTransition();
-
+  const [showPassword, setShowPassword] = useState(false);    
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
@@ -82,20 +81,41 @@ function LoginFormContent() {
           </div>
         </div>
 
-        <div>
-          <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Contraseña</label>
-          <div className="relative">
-            <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input 
-              required
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-            />
-          </div>
-        </div>
+        {/* CONTRASEÑA CON TOGGLE DE VISIBILIDAD */}
+<div className="space-y-1.5">
+  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+    CONTRASEÑA
+  </label>
+
+  <div className="relative flex items-center bg-slate-950 border border-slate-800 rounded-xl focus-within:border-emerald-500 transition-colors">
+    {/* Ícono de Candado Izquierdo */}
+    <Lock className="absolute left-3.5 w-4 h-4 text-slate-500 pointer-events-none" />
+
+    {/* Input de Contraseña Dinámico */}
+    <input
+      required
+      type={showPassword ? "text" : "password"}
+      placeholder="••••••••"
+      value={password}
+      onChange={(e) => setPassword(e.target.value)}
+      className="w-full bg-transparent pl-10 pr-10 py-2.5 text-sm text-white placeholder-slate-600 outline-none font-mono"
+    />
+
+    {/* Botón Acción Mostrar / Ocultar */}
+    <button
+      type="button"
+      onClick={() => setShowPassword((prev) => !prev)}
+      className="absolute right-3 text-slate-500 hover:text-emerald-400 focus:text-emerald-400 transition-colors outline-none cursor-pointer p-1 rounded-lg"
+      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+    >
+      {showPassword ? (
+        <EyeOff className="w-4 h-4" />
+      ) : (
+        <Eye className="w-4 h-4" />
+      )}
+    </button>
+  </div>
+</div>
 
         <div className="flex items-center justify-between text-xs mt-1 mb-4">
           <span className="text-slate-500">¿Problemas para acceder?</span>

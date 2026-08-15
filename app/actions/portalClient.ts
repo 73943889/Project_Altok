@@ -22,11 +22,15 @@ export async function getPortalData() {
     }
 
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    const userId = payload.userId;
+    const userId = (payload as any).userId || (payload as any).id;
+    const sessionToken = (payload as any).sessionToken; // 👈 1. Extraemos el token dinámico de la cookie
 
-    // 1. Obtener datos del usuario incluyendo is_active desde Neon
+    // 2. Obtener datos del usuario Y el token de sesión activo en Neon mediante JOIN
     const userRes: any = await query(
-      'SELECT id, full_name, email, phone, role, is_active FROM public.users WHERE id = $1 LIMIT 1',
+      `SELECT u.id, u.full_name, u.email, u.phone, u.role, u.is_active, s.refresh_token 
+       FROM public.users u
+       LEFT JOIN public.sessions s ON u.id = s.user_id
+       WHERE u.id = $1 LIMIT 1`,
       [userId]
     );
     const users = Array.isArray(userRes) ? userRes : userRes?.rows;
@@ -37,10 +41,9 @@ export async function getPortalData() {
 
     const currentUser = users[0];
 
-    // 🛡️ 2. Validación estricta de cuenta inhabilitada (is_active === false / 'f')
+    // 🛡️ 3. Validación estricta de cuenta inhabilitada
     const isActive = currentUser.is_active === true || currentUser.is_active === 't' || currentUser.is_active === 1;
     if (!isActive) {
-      // Destruimos la cookie de sesión inmediatamente en el servidor
       cookieStore.set({
         name: 'auth_token',
         value: '',
@@ -53,14 +56,31 @@ export async function getPortalData() {
       return { success: false, error: 'cuenta_inhabilitada' };
     }
 
-    // 3. Obtener transacciones del usuario
+    // 🔒 4. VALIDACIÓN DE SESIÓN ÚNICA EN TIEMPO REAL (DISPOSITIVO CONCURRENTE)
+    // Si la cookie trae un sessionToken y este NO coincide con el refresh_token activo en BD,
+    // significa que el usuario inició sesión en un teléfono u otro navegador.
+    if (sessionToken && currentUser.refresh_token !== sessionToken) {
+      // Destruimos la cookie del dispositivo antiguo
+      cookieStore.set({
+        name: 'auth_token',
+        value: '',
+        path: '/',
+        expires: new Date(0),
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      });
+      return { success: false, error: 'sesion_expulsada' };
+    }
+
+    // 5. Obtener transacciones del usuario
     const txRes: any = await query(
       'SELECT * FROM public.transactions WHERE user_id = $1 ORDER BY created_at DESC',
       [userId]
     );
     const transactions = Array.isArray(txRes) ? txRes : txRes?.rows || [];
 
-    // 4. Obtener configuración del sitio / tasas
+    // 6. Obtener configuración del sitio / tasas
     const configRes: any = await query('SELECT * FROM public.site_config');
     const siteConfig = Array.isArray(configRes) ? configRes : configRes?.rows || [];
 

@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createTransactionAction, updateTransactionBankAction } from "@/app/actions/transaction";
 import { ShieldAlert, Phone } from "lucide-react";
+
 interface TransferModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -167,12 +168,10 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   const countryCodeDropdownRef = useRef<HTMLDivElement>(null);
   const docTypeDropdownRef = useRef<HTMLDivElement>(null);
 
-  // 🛡️ Referencias de DOM para enfocar automáticamente el campo con error
   const documentNumberInputRef = useRef<HTMLInputElement>(null);
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const recipientAccountInputRef = useRef<HTMLInputElement>(null);
 
-  // 🛡️ Estados para Errores Inline (debajo de cada campo)
   const [formErrors, setFormErrors] = useState<{
     documentType?: string;
     documentNumber?: string;
@@ -183,11 +182,22 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     general?: string;
   }>({});
 
-  // 🛡️ Estado global seguro para el feedback de copia
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  // 🛡️ Estado para registrar la cuenta recaudadora elegida al copiar
   const [selectedCollectorAccount, setSelectedCollectorAccount] = useState<CollectorAccount | null>(null);
+
+  // 🎨 PALETA DINÁMICA DE COLORES SEGÚN LA MONEDA DE ENVÍO
+  const isEuro = sendCurrency === "EUR";
+
+  const themeColors = {
+    textAccent: isEuro ? "text-blue-400" : "text-emerald-400",
+    bgAccent: isEuro ? "bg-blue-600 hover:bg-blue-500" : "bg-emerald-500 hover:bg-emerald-400",
+    bgAccentSoft: isEuro ? "bg-blue-500/20 text-blue-400" : "bg-emerald-500/20 text-emerald-400",
+    borderFocus: isEuro ? "focus:border-blue-500" : "focus:border-emerald-500",
+    borderFocusGroup: isEuro ? "focus-within:border-blue-500" : "focus-within:border-emerald-500",
+    ringAccent: isEuro ? "border-blue-500 ring-1 ring-blue-500/50" : "border-emerald-500 ring-1 ring-emerald-500/50",
+    badgeAccent: isEuro ? "bg-blue-500 text-slate-950" : "bg-emerald-500 text-slate-950",
+    scrollbarThumb: isEuro ? "hover:bg-blue-400" : "hover:bg-emerald-400",
+  };
 
   useEffect(() => {
     if (!isCompleted) {
@@ -328,13 +338,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
 
-    
     if (formErrors[e.target.name as keyof typeof formErrors]) {
       setFormErrors({ ...formErrors, [e.target.name]: undefined });
     }
   };
 
-  // 🛡️ VALIDACIÓN EN LÍNEA Y AUTO-FOCUS CON PREVENCIÓN DE ALERTAS NATIVAS
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: typeof formErrors = {};
@@ -360,7 +368,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
 
     setFormErrors(errors);
 
-    // Si existen errores, aplicamos auto-focus en el primer campo faltante
     if (Object.keys(errors).length > 0) {
       if (errors.documentType || errors.documentNumber) {
         documentNumberInputRef.current?.focus();
@@ -533,11 +540,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
           {!isCompleted ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <h2 className="text-xl font-bold text-center">Datos de la Remesa</h2>
-              <p className="text-center text-emerald-400 text-sm font-medium">
+              <p className={`text-center text-sm font-medium ${themeColors.textAccent}`}>
                 Enviarás {sendAmount} {sendCurrency} para abonar {receiveAmount} {receiveCurrency}
               </p>
 
-              {/* Error General de Servidor/Sesión */}
+              {/* Error General */}
               {formErrors.general && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -546,7 +553,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
               )}
 
               <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-emerald-400 tracking-wider uppercase">
+                <h3 className={`text-xs font-semibold tracking-wider uppercase ${themeColors.textAccent}`}>
                   1. Tus Datos (Remitente)
                 </h3>
                 
@@ -559,7 +566,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     placeholder="Ej. Juan Carlos"
                     value={formData.firstName}
                     onChange={handleNameChange}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
+                    className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all`}
                   />
                 </div>
 
@@ -573,7 +580,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       placeholder="Ej. Pérez"
                       value={formData.paternalSurname}
                       onChange={handleNameChange}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
+                      className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all`}
                     />
                   </div>
                   <div>
@@ -585,7 +592,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       placeholder="Ej. Gómez"
                       value={formData.maternalSurname}
                       onChange={handleNameChange}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
+                      className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all`}
                     />
                   </div>
                 </div>
@@ -599,7 +606,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     placeholder="tucorreo@ejemplo.com"
                     value={formData.email}
                     onChange={handleChange}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                    className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all font-mono`}
                   />
                 </div>
 
@@ -613,35 +620,35 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                         setIsCountryCodeOpen(false);
                         setIsDestinationOpen(false);
                       }}
-                      className="w-full h-[42px] px-3 rounded-lg bg-slate-900 border border-slate-700 text-left text-xs flex items-center justify-between text-slate-200 focus:border-emerald-500 outline-none cursor-pointer"
+                      className={`w-full h-[42px] px-3 rounded-lg bg-slate-900 border border-slate-700 text-left text-xs flex items-center justify-between text-slate-200 ${themeColors.borderFocus} outline-none cursor-pointer`}
                     >
                       <span className="truncate">{selectedDocTypeObj ? selectedDocTypeObj.label : "Elegir Documento"}</span>
                       <span className="text-[10px] text-slate-400 ml-1">▼</span>
                     </button>
 
                     {isDocTypeOpen && (
-                    <div className="absolute left-0 top-full mt-1.5 w-full rounded-xl bg-slate-900 border border-slate-700 shadow-2xl z-50 p-1.5 space-y-1">
-                      {DOCUMENT_TYPES.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setFormData({ ...formData, documentType: item.id });
-                            setIsDocTypeOpen(false);
-                            if (formErrors.documentType) setFormErrors({ ...formErrors, documentType: undefined });
-                          }}
-                          className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
-                            formData.documentType === item.id
-                              ? "bg-emerald-500/20 text-emerald-400 font-semibold"
-                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                          }`}
-                      >
-                        <span>{item.label}</span>
-                        {formData.documentType === item.id && <span>✓</span>}
-                      </button>
-    ))}
-  </div>
-)}
+                      <div className="absolute left-0 top-full mt-1.5 w-full rounded-xl bg-slate-900 border border-slate-700 shadow-2xl z-50 p-1.5 space-y-1">
+                        {DOCUMENT_TYPES.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, documentType: item.id });
+                              setIsDocTypeOpen(false);
+                              if (formErrors.documentType) setFormErrors({ ...formErrors, documentType: undefined });
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
+                              formData.documentType === item.id
+                                ? `${themeColors.bgAccentSoft} font-semibold`
+                                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {formData.documentType === item.id && <span>✓</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <input
@@ -651,7 +658,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     placeholder="N° Documento"
                     value={formData.documentNumber}
                     onChange={handleChange}
-                    className="col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm focus:border-emerald-500 outline-none"
+                    className={`col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm ${themeColors.borderFocus} outline-none`}
                   />
                 </div>
 
@@ -663,87 +670,86 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   </p>
                 )}
 
-         {/* TELÉFONO / WHATSAPP DE CONTACTO (Alineación Horizontal Inline Impresionable) */}
-<div className="space-y-1">
-  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-    TELÉFONO / CELULAR
-  </label>
-  
-  <div className="relative flex items-center bg-slate-950 border border-slate-800 rounded-2xl focus-within:border-emerald-500 transition-all shadow-inner">
-    
-    {/* Contenedor del Dropdown de País */}
-    <div className="relative flex items-center border-r border-slate-800 bg-slate-900/60 rounded-l-2xl z-30 shrink-0" ref={countryCodeDropdownRef}>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsCountryCodeOpen((prev) => !prev);
-          setIsDestinationOpen(false);
-          setIsDocTypeOpen(false);
-        }}
-        className="flex flex-row items-center gap-1.5 px-3 py-3 text-xs font-bold text-emerald-400 font-mono cursor-pointer outline-none hover:bg-slate-800/50 transition-colors rounded-l-2xl whitespace-nowrap"
-      >
-        <Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-        <span className="text-sm leading-none">{selectedCountryObj?.flag || "🇵🇪"}</span>
-        <span className="leading-none">{formData.countryCode || "+51"}</span>
-        <span className="text-[10px] text-emerald-400 leading-none">▼</span>
-      </button>
+                {/* CÓDIGO DE PAÍS / TELÉFONO */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    CÓDIGO DE PAÍS / TELÉFONO
+                  </label>
+                  
+                  <div className={`relative flex items-center bg-slate-950 border border-slate-800 rounded-2xl ${themeColors.borderFocusGroup} transition-all shadow-inner`}>
+                    
+                    {/* Contenedor del Dropdown de País */}
+                    <div className="relative flex items-center border-r border-slate-800 bg-slate-900/60 rounded-l-2xl z-30 shrink-0" ref={countryCodeDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsCountryCodeOpen((prev) => !prev);
+                          setIsDestinationOpen(false);
+                          setIsDocTypeOpen(false);
+                        }}
+                        className={`flex flex-row items-center gap-1.5 px-3 py-3 text-xs font-bold ${themeColors.textAccent} font-mono cursor-pointer outline-none hover:bg-slate-800/50 transition-colors rounded-l-2xl whitespace-nowrap`}
+                      >
+                        <Phone className={`w-3.5 h-3.5 ${themeColors.textAccent} shrink-0`} />
+                        <span className="text-sm leading-none">{selectedCountryObj?.flag || "🇵🇪"}</span>
+                        <span className="leading-none">{formData.countryCode || "+51"}</span>
+                        <span className={`text-[10px] ${themeColors.textAccent} leading-none`}>▼</span>
+                      </button>
 
-      {/* Menú Desplegable flotante */}
-      {isCountryCodeOpen && (
-        <div className="absolute left-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-50 p-1.5 space-y-1 font-mono">
-          {COUNTRY_CODES.map((item) => (
-            <button
-              key={item.code}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setFormData((prev) => ({ ...prev, countryCode: item.code }));
-                setIsCountryCodeOpen(false);
-                if (formErrors.countryCode) {
-                  setFormErrors((prev) => ({ ...prev, countryCode: undefined }));
-                }
-              }}
-              className={`w-full text-left px-3 py-2 text-xs rounded-xl transition-colors cursor-pointer flex flex-row items-center justify-between ${
-                formData.countryCode === item.code
-                  ? "bg-emerald-500/20 text-emerald-400 font-bold"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <span>{item.flag}</span>
-                <span>{item.code}</span>
-              </span>
-              {formData.countryCode === item.code && <span className="text-emerald-400 font-bold">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+                      {/* Menú Desplegable flotante */}
+                      {isCountryCodeOpen && (
+                        <div className="absolute left-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-50 p-1.5 space-y-1 font-mono">
+                          {COUNTRY_CODES.map((item) => (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setFormData((prev) => ({ ...prev, countryCode: item.code }));
+                                setIsCountryCodeOpen(false);
+                                if (formErrors.countryCode) {
+                                  setFormErrors((prev) => ({ ...prev, countryCode: undefined }));
+                                }
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs rounded-xl transition-colors cursor-pointer flex flex-row items-center justify-between ${
+                                formData.countryCode === item.code
+                                  ? `${themeColors.bgAccentSoft} font-bold`
+                                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <span>{item.flag}</span>
+                                <span>{item.code}</span>
+                              </span>
+                              {formData.countryCode === item.code && <span className={`${themeColors.textAccent} font-bold`}>✓</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-    {/* Input de Número Telefónico */}
-    <input
-      ref={phoneInputRef}
-      type="tel"
-      name="phone"
-      placeholder="987 654 321"
-      value={formData.phone}
-      onInput={(e) => {
-        const target = e.target as HTMLInputElement;
-        target.value = target.value.replace(/\D/g, "");
-      }}
-      onChange={handleChange}
-      onKeyDown={(e) => {
-        if (["e", "E", "+", "-", "."].includes(e.key)) {
-          e.preventDefault();
-        }
-      }}
-      className="w-full bg-transparent text-xs text-white placeholder-slate-600 px-4 py-3 outline-none font-mono rounded-r-2xl"
-    />
-  </div>
-</div>
+                    <input
+                      ref={phoneInputRef}
+                      type="tel"
+                      name="phone"
+                      placeholder="987 654 321"
+                      value={formData.phone}
+                      onInput={(e) => {
+                        const target = e.target as HTMLInputElement;
+                        target.value = target.value.replace(/\D/g, "");
+                      }}
+                      onChange={handleChange}
+                      onKeyDown={(e) => {
+                        if (["e", "E", "+", "-", "."].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className="w-full bg-transparent text-xs text-white placeholder-slate-600 px-4 py-3 outline-none font-mono rounded-r-2xl"
+                    />
+                  </div>
+                </div>
 
                 {/* ERROR INLINE TELÉFONO */}
                 {(formErrors.countryCode || formErrors.phone) && (
@@ -754,7 +760,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                 )}
 
                 {/* 2. DATOS DEL DESTINATARIO */}
-                <h3 className="text-xs font-semibold text-emerald-400 tracking-wider uppercase pt-2">
+                <h3 className={`text-xs font-semibold tracking-wider uppercase pt-2 ${themeColors.textAccent}`}>
                   2. Datos del Destinatario
                 </h3>
                 
@@ -767,7 +773,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     placeholder="Ej. María Luisa"
                     value={formData.recipientFirstName}
                     onChange={handleNameChange}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
+                    className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all`}
                   />
                 </div>
 
@@ -781,7 +787,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       placeholder="Ej. Quispe"
                       value={formData.recipientPaternalSurname}
                       onChange={handleNameChange}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
+                      className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all`}
                     />
                   </div>
                   <div>
@@ -793,12 +799,12 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       placeholder="Ej. Torres"
                       value={formData.recipientMaternalSurname}
                       onChange={handleNameChange}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
+                      className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all`}
                     />
                   </div>
                 </div>
 
-                {/* 🗂️ PESTAÑAS: BANCOS Y BILLETERAS (WALLETS) */}
+                {/* PESTAÑAS: BANCOS Y BILLETERAS */}
                 <div className="pt-2 space-y-2">
                   <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                     <button
@@ -806,7 +812,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       onClick={() => setFormData({ ...formData, destinationType: "bank", recipientDestinationId: "" })}
                       className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                         formData.destinationType === "bank"
-                          ? "bg-emerald-500 text-slate-950 shadow-sm"
+                          ? `${themeColors.bgAccent} text-slate-950 shadow-sm`
                           : "text-slate-400 hover:text-white"
                       }`}
                     >
@@ -817,7 +823,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       onClick={() => setFormData({ ...formData, destinationType: "wallet", recipientDestinationId: "" })}
                       className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                         formData.destinationType === "wallet"
-                          ? "bg-emerald-500 text-slate-950 shadow-sm"
+                          ? `${themeColors.bgAccent} text-slate-950 shadow-sm`
                           : "text-slate-400 hover:text-white"
                       }`}
                     >
@@ -834,7 +840,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                           setIsCountryCodeOpen(false);
                           setIsDocTypeOpen(false);
                         }}
-                        className="w-full h-[42px] px-3 rounded-lg bg-slate-900 border border-slate-700 text-left text-xs flex items-center justify-between text-slate-200 focus:border-emerald-500 outline-none cursor-pointer"
+                        className={`w-full h-[42px] px-3 rounded-lg bg-slate-900 border border-slate-700 text-left text-xs flex items-center justify-between text-slate-200 ${themeColors.borderFocus} outline-none cursor-pointer`}
                       >
                         <span className="truncate">
                           {selectedDestinationObj ? selectedDestinationObj.name : (formData.destinationType === "bank" ? "Elegir Banco" : "Elegir Wallet")}
@@ -855,7 +861,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                               }}
                               className={`w-full text-left px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex items-center justify-between ${
                                 formData.recipientDestinationId === item.id
-                                  ? "bg-emerald-500/20 text-emerald-400 font-semibold"
+                                  ? `${themeColors.bgAccentSoft} font-semibold`
                                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
                               }`}
                             >
@@ -885,18 +891,12 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       maxLength={34}
                       value={formData.recipientAccount}
                       onChange={(e) => {
-  const value = e.target.value
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-
-  handleChange({
-    target: {
-      name: "recipientAccount",
-      value,
-    },
-  } as unknown as React.ChangeEvent<HTMLInputElement>); // 👈 Solución aplicada
-}}
-                      className="col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm focus:border-emerald-500 outline-none"
+                        const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        handleChange({
+                          target: { name: "recipientAccount", value }
+                        } as unknown as React.ChangeEvent<HTMLInputElement>);
+                      }}
+                      className={`col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm ${themeColors.borderFocus} outline-none`}
                     />
                   </div>
 
@@ -908,10 +908,10 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     </p>
                   )}
 
-                  {/* 🏷️ LABEL DE COMISIÓN DINÁMICO EN TIEMPO REAL */}
+                  {/* LABEL DE COMISIÓN DINÁMICO */}
                   <div className="flex justify-between items-center px-1 pt-1 text-[11px] font-medium text-slate-400">
                     <span>Comisión de transferencia ({formData.destinationType === "bank" ? "Banco" : "Wallet"}):</span>
-                    <span className="text-emerald-400 font-bold">
+                    <span className={`${themeColors.textAccent} font-bold`}>
                       {activeCommission} {sendCurrency} {Number(activeCommission) === 0 ? "(¡Gratis!)" : ""}
                     </span>
                   </div>
@@ -921,28 +921,28 @@ export const TransferModal: React.FC<TransferModalProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full mt-4 rounded-xl bg-emerald-500 py-3 font-semibold text-slate-950 hover:bg-emerald-400 transition-colors disabled:opacity-50 cursor-pointer"
+                className={`w-full mt-4 rounded-xl ${themeColors.bgAccent} py-3 font-semibold text-slate-950 transition-colors disabled:opacity-50 cursor-pointer`}
               >
                 {isSubmitting ? "Procesando..." : "💳 Siguiente: Ver Datos de Pago"}
               </button>
             </form>
           ) : (
             <div className="flex flex-col items-center text-center space-y-3 py-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-lg font-bold">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${themeColors.bgAccentSoft} text-lg font-bold`}>
                 ✓
               </div>
 
               <div>
-                <p className="text-[11px] font-bold tracking-widest text-emerald-400 uppercase">
+                <p className={`text-[11px] font-bold tracking-widest uppercase ${themeColors.textAccent}`}>
                   ¡Casi listo! Falta tu pago
                 </p>
                 <h2 className="text-xl font-extrabold text-white mt-0.5">
-                  Código: <span className="text-emerald-400">{operationCode}</span>
+                  Código: <span className={themeColors.textAccent}>{operationCode}</span>
                 </h2>
               </div>
               <p className="text-xs text-slate-300">
                 Realiza tu depósito o transferencia por el monto total de{" "}
-                <strong className="text-emerald-400 font-extrabold text-sm">
+                <strong className={`${themeColors.textAccent} font-extrabold text-sm`}>
                   {totalDepositAmount} {sendCurrency}
                 </strong>{" "}
                 <span className="text-[11px] text-slate-400 block mt-0.5">
@@ -951,7 +951,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                 eligiendo cualquiera de nuestras cuentas oficiales:
               </p>
 
-              {/* 🏦 CUENTAS COLECTORAS FILTRADAS + SELECCIÓN DINÁMICA */}
+              {/* CUENTAS COLECTORAS */}
               <div className="w-full max-h-72 overflow-y-auto space-y-2.5 pr-2 text-left text-xs font-mono custom-scrollbar">
                 {(() => {
                   const allAccounts = CORPORATE_COLLECTOR_ACCOUNTS[sendCurrency] || CORPORATE_COLLECTOR_ACCOUNTS.EUR;
@@ -973,13 +973,13 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       <div 
                         key={acc.id} 
                         className={`rounded-xl bg-slate-950/90 border p-3 space-y-2 transition-all shadow-inner ${
-                          isSelected ? "border-emerald-500 ring-1 ring-emerald-500/50 bg-slate-900/90" : "border-slate-800 hover:border-slate-700"
+                          isSelected ? themeColors.ringAccent : "border-slate-800 hover:border-slate-700"
                         }`}
                       >
                         <div className="flex justify-between items-center border-b border-slate-800/60 pb-1.5">
-                          <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                          <span className={`font-bold ${themeColors.textAccent} flex items-center gap-1.5`}>
                             <span>{acc.type === "Wallet" ? "[Wallet]" : "[Banco]"}</span> {acc.name}
-                            {isSelected && <span className="text-[9px] bg-emerald-500 text-slate-950 px-1.5 py-0.5 rounded font-sans font-bold ml-1">SELECCIONADA</span>}
+                            {isSelected && <span className={`text-[9px] ${themeColors.badgeAccent} px-1.5 py-0.5 rounded font-sans font-bold ml-1`}>SELECCIONADA</span>}
                           </span>
                           <span className="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">
                             {acc.holder}
@@ -997,8 +997,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                               onClick={() => handleCopy(acc.accountNumber, `${acc.id}-acc`, acc)}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                                 copiedKey === `${acc.id}-acc`
-                                  ? "bg-emerald-500 text-slate-950"
-                                  : "bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700"
+                                  ? themeColors.badgeAccent
+                                  : `bg-slate-900 hover:bg-slate-800 ${themeColors.textAccent} border border-slate-700`
                               }`}
                             >
                               {copiedKey === `${acc.id}-acc` ? "¡Copiado! ✓" : "Copiar"}
@@ -1010,7 +1010,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                           <div className="flex justify-between items-center pt-1 border-t border-slate-900">
                             <span className="text-slate-400 text-[11px]">CCI Interbancario:</span>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-emerald-400 select-all text-[11px] bg-slate-900/80 px-2 py-1 rounded border border-slate-800/80 font-mono">
+                              <span className={`font-bold ${themeColors.textAccent} select-all text-[11px] bg-slate-900/80 px-2 py-1 rounded border border-slate-800/80 font-mono`}>
                                 {acc.cci}
                               </span>
                               <button
@@ -1018,8 +1018,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                                 onClick={() => handleCopy(acc.cci!, `${acc.id}-cci`, acc)}
                                 className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                                   copiedKey === `${acc.id}-cci`
-                                    ? "bg-emerald-500 text-slate-950"
-                                    : "bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700"
+                                    ? themeColors.badgeAccent
+                                    : `bg-slate-900 hover:bg-slate-800 ${themeColors.textAccent} border border-slate-700`
                                 }`}
                               >
                                 {copiedKey === `${acc.id}-cci` ? "¡Copiado! ✓" : "Copiar"}
@@ -1036,7 +1036,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
               <button
                 type="button"
                 onClick={handleWhatsAppRedirect}
-                className="w-full rounded-xl bg-emerald-500 py-3 font-semibold text-slate-950 hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10 cursor-pointer mt-2"
+                className={`w-full rounded-xl ${themeColors.bgAccent} py-3 font-semibold text-slate-950 transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer mt-2`}
               >
                 Enviar Comprobante por WhatsApp
               </button>

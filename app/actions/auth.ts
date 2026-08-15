@@ -87,18 +87,21 @@ export async function loginAction(input: any) {
 
     const userRole = (user.role || 'client').toLowerCase().trim();
 
-    await saveUserSession(user.id);
+   // 1. Guardas el token generado para la BD en la constante refreshToken
+const refreshToken = await saveUserSession(user.id);
 
-    const token = await new SignJWT({ 
-      userId: user.id, 
-      email: user.email, 
-      role: userRole,
-      isActive: isActive 
-    })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('7d')
-      .sign(JWT_SECRET);
+// 2. Firmas el JWT pasando la constante dentro de sessionToken
+const token = await new SignJWT({ 
+  userId: user.id, 
+  email: user.email, 
+  role: userRole,
+  isActive: isActive,
+  sessionToken: refreshToken // 👈 Ahora sí viaja la clave única dentro del JWT de la cookie
+})
+  .setProtectedHeader({ alg: 'HS256' })
+  .setIssuedAt()
+  .setExpirationTime('7d')
+  .sign(JWT_SECRET);
 
     const cookieStore = await cookies();
     
@@ -276,12 +279,16 @@ export async function resetPasswordAction(token: string, newPass: string) {
       return { success: false, error: 'El enlace de recuperación es inválido o ha expirado.' };
     }
 
-    const hashedPassword = await bcrypt.hash(newPass, 12); // Factor de costo 12 seguro por OWASP
+    const hashedPassword = await bcrypt.hash(newPass, 12);
 
+    // Actualizamos la contraseña y limpiamos el token de recuperación
     await query(
       'UPDATE public.users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL, updated_at = NOW() WHERE id = $2',
       [hashedPassword, user.id]
     );
+
+    // 🔒 REGLA DE SESIÓN ÚNICA: Destruimos la sesión activa existente para forzar re-login
+    await query('DELETE FROM public.sessions WHERE user_id = $1', [user.id]);
 
     return { success: true, message: 'Contraseña actualizada con éxito.' };
   } catch (err: any) {

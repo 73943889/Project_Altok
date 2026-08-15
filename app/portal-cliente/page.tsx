@@ -3,28 +3,11 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { Eye, EyeOff, Lock } from "lucide-react";
 import { logoutAction } from '@/app/actions/auth';
 import { useRouter } from "next/navigation";
 import Pusher from "pusher-js";
-import { 
-  LogOut, 
-  Send, 
-  Clock, 
-  CheckCircle2, 
-  User, 
-  ShieldCheck, 
-  Phone,
-  ChevronDown,
-  PlusCircle, 
-  Search,
-  Filter,
-  Settings,
-  TrendingUp,
-  HelpCircle,
-  ArrowUpRight,
-  RefreshCw,
-  ShieldAlert
-} from "lucide-react";
+import {   LogOut,   Send,   Clock,  CheckCircle2,   User,   ShieldCheck,   Phone,  ChevronDown,  PlusCircle,   Search,  Filter,  Settings,  TrendingUp,  HelpCircle,  ArrowUpRight,  RefreshCw,  ShieldAlert} from "lucide-react";
 import { getPortalData, updateUserProfileAndPasswordAction } from "@/app/actions/portalClient";
 
 export default function PortalClientePage() {
@@ -34,6 +17,10 @@ export default function PortalClientePage() {
   // 🛡️ Referencia mutable para que Pusher conozca al usuario sin re-ejecutar el useEffect en bucle
   const userRef = useRef<any>(null);
   userRef.current = user;
+
+const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+const [showNewPassword, setShowNewPassword] = useState(false);
+const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [profileName, setProfileName] = useState<string>("Cliente");
   const [transfers, setTransfers] = useState<any[]>([]);
@@ -112,13 +99,15 @@ export default function PortalClientePage() {
       clearTimeout(timeoutId); // Limpiamos el timeout si responde a tiempo
 
       if (!response || !response.success || !response.user) {
-        if (response?.error === "cuenta_inhabilitada") {
-          router.push("/login?error=cuenta_inhabilitada");
-        } else {
-          router.push("/login");
-        }
-        return;
-      }
+  if (response?.error === "cuenta_inhabilitada") {
+    router.push("/login?error=cuenta_inhabilitada");
+  } else if (response?.error === "sesion_expulsada") {
+    router.push("/login?error=sesion_expulsada");
+  } else {
+    router.push("/login");
+  }
+  return;
+}
 
       const currentUser = response.user;
       setUser(currentUser);
@@ -223,6 +212,54 @@ export default function PortalClientePage() {
     return matchesSearch && matchesStatus;
   });
 
+
+// 🛠️ HELPER: RENDERIZADO DINÁMICO DE OBSERVACIONES Y MOTIVO (CORREGIDO)
+  const renderObservationBadge = (tx: any) => {
+    const statusUpper = (tx.status || "PENDIENTE").toUpperCase();
+
+    switch (statusUpper) {
+      case "PENDIENTE":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/10 border border-amber-500/20 text-amber-400">
+            Pago pendiente de validación
+          </span>
+        );
+
+      case "EN_PROCESO":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500/10 border border-blue-500/20 text-blue-400">
+            En proceso de abono
+          </span>
+        );
+
+      case "COMPLETADO":
+      case "COMPLETADA":
+      case "APROBADO":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+            {tx.internal_notes || "Transacción exitosa"}
+          </span>
+        );
+
+      case "RECHAZADO":
+      case "RECHAZADA":
+      case "CANCELADO":
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-rose-500/10 border border-rose-500/20 text-rose-400">
+            {tx.internal_notes || "Transferencia rechazada"}
+          </span>
+        );
+
+      default:
+        return (
+          <span className="text-xs text-slate-500 italic">
+            Sin observaciones
+          </span>
+        );
+    }
+  };
+
+
   if (loading) {
     return (
       <div className="w-full min-h-[80vh] flex items-center justify-center">
@@ -281,6 +318,7 @@ export default function PortalClientePage() {
               onClick={handleSignOut}
               className="px-3.5 py-2 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold text-red-400 transition-all flex items-center gap-2 cursor-pointer"
             >
+               <span className="hidden sm:inline">Salir</span>
               <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -466,22 +504,10 @@ export default function PortalClientePage() {
                           })()}
                         </td>
 
-                        <td className="py-4 px-6 font-sans">
-                          {tx.internal_notes ? (
-                            <span 
-                              className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-medium max-w-xs truncate ${
-                                (tx.status || "").toUpperCase() === "RECHAZADO" || (tx.status || "").toUpperCase() === "CANCELADO"
-                                  ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" 
-                                  : "bg-slate-800/60 text-slate-300 border border-slate-700/50"
-                              }`} 
-                              title={tx.internal_notes}
-                            >
-                              {tx.internal_notes}
-                            </span>
-                          ) : (
-                            <span className="text-slate-600 text-[11px] italic">Sin observaciones</span>
-                          )}
-                        </td>
+                        {/* COLUMNA DINÁMICA CON HELPER DE OBSERVACIONES Y COLORES EN TIEMPO REAL */}
+<td className="py-4 px-6 font-sans">
+  {renderObservationBadge(tx)}
+</td>
 
                       </tr>
                     ))}
@@ -588,7 +614,7 @@ export default function PortalClientePage() {
                       if(nameError) setNameError("");
                     }}
                     required
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                    className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-500 cursor-not-allowed font-mono"
                   />
                   {nameError && (
                     <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-sans">
@@ -600,7 +626,7 @@ export default function PortalClientePage() {
                 {/* TELÉFONO / CELULAR */}
 <div className="space-y-1.5">
   <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-    TELÉFONO / CELULAR
+    CÓDIGO DE PAÍS / TELÉFONO 
   </label>
   <div className="relative flex items-center bg-slate-950 border border-slate-800 rounded-2xl focus-within:border-emerald-500 transition-all overflow-hidden shadow-inner">
     
@@ -653,75 +679,126 @@ export default function PortalClientePage() {
                 </div>
 
                 {/* SECCIÓN DE CAMBIO DE CONTRASEÑA */}
-                <div className="pt-3 border-t border-slate-800 space-y-3">
-                  <p className="text-xs font-bold text-emerald-400">Seguridad: Cambiar Contraseña</p>
-                  
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                      Contraseña Actual (Requerida si deseas cambiar clave)
-                    </label>
-                    <input
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
-                    />
-                  </div>
+<div className="pt-3 border-t border-slate-800 space-y-3">
+  <p className="text-xs font-bold text-emerald-400">Seguridad: Cambiar Contraseña</p>
+  
+  {/* Contraseña Actual */}
+  <div>
+    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+      Contraseña Actual (Requerida si deseas cambiar clave)
+    </label>
+    <div className="relative flex items-center bg-slate-950 border border-slate-700 rounded-xl focus-within:border-emerald-500 transition-all overflow-hidden shadow-inner">
+      <input
+        type={showCurrentPassword ? "text" : "password"}
+        value={currentPassword}
+        onChange={(e) => setCurrentPassword(e.target.value)}
+        placeholder="••••••••"
+        className="w-full bg-transparent px-3.5 py-2 pr-10 text-xs text-white outline-none font-mono"
+      />
+      <button
+        type="button"
+        onClick={() => setShowCurrentPassword((prev) => !prev)}
+        className="absolute right-2.5 text-slate-500 hover:text-emerald-400 focus:text-emerald-400 transition-colors outline-none cursor-pointer p-1 rounded-lg"
+        aria-label={showCurrentPassword ? "Ocultar contraseña actual" : "Mostrar contraseña actual"}
+      >
+        {showCurrentPassword ? (
+          <EyeOff className="w-3.5 h-3.5" />
+        ) : (
+          <Eye className="w-3.5 h-3.5" />
+        )}
+      </button>
+    </div>
+  </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                        Nueva Contraseña
-                      </label>
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => {
-                          setNewPassword(e.target.value);
-                          if(passwordError) setPasswordError("");
-                        }}
-                        placeholder="Mín. 8 caracteres"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                        Confirmar Clave
-                      </label>
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => {
-                          setConfirmPassword(e.target.value);
-                          if(passwordError) setPasswordError("");
-                        }}
-                        placeholder="Repetir clave"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
-                      />
-                    </div>
-                  </div>
+  {/* Nueva Contraseña y Confirmar Clave */}
+  <div className="grid grid-cols-2 gap-2">
+    
+    {/* Nueva Contraseña */}
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+        Nueva Contraseña
+      </label>
+      <div className="relative flex items-center bg-slate-950 border border-slate-700 rounded-xl focus-within:border-emerald-500 transition-all overflow-hidden shadow-inner">
+        <input
+          type={showNewPassword ? "text" : "password"}
+          value={newPassword}
+          onChange={(e) => {
+            setNewPassword(e.target.value);
+            if (passwordError) setPasswordError("");
+          }}
+          placeholder="Mín. 8 caracteres"
+          className="w-full bg-transparent px-3.5 py-2 pr-9 text-xs text-white outline-none font-mono"
+        />
+        <button
+          type="button"
+          onClick={() => setShowNewPassword((prev) => !prev)}
+          className="absolute right-2 text-slate-500 hover:text-emerald-400 focus:text-emerald-400 transition-colors outline-none cursor-pointer p-1 rounded-lg"
+          aria-label={showNewPassword ? "Ocultar nueva contraseña" : "Mostrar nueva contraseña"}
+        >
+          {showNewPassword ? (
+            <EyeOff className="w-3.5 h-3.5" />
+          ) : (
+            <Eye className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+    </div>
 
-                  {newPassword.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      <div className="flex gap-1 h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
-                        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 1 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
-                        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 2 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
-                        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 3 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
-                      </div>
-                      <p className="text-[10px] font-mono flex justify-between text-slate-400">
-                        <span>Nivel: <strong className={passwordStrength.level === 3 ? "text-emerald-400" : passwordStrength.level === 2 ? "text-amber-400" : "text-rose-400"}>{passwordStrength.text}</strong></span>
-                        <span>Mín. 8 caracteres (Letras, Números y Símbolos)</span>
-                      </p>
-                    </div>
-                  )}
+    {/* Confirmar Clave */}
+    <div>
+      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+        Confirmar Clave
+      </label>
+      <div className="relative flex items-center bg-slate-950 border border-slate-700 rounded-xl focus-within:border-emerald-500 transition-all overflow-hidden shadow-inner">
+        <input
+          type={showConfirmPassword ? "text" : "password"}
+          value={confirmPassword}
+          onChange={(e) => {
+            setConfirmPassword(e.target.value);
+            if (passwordError) setPasswordError("");
+          }}
+          placeholder="Repetir clave"
+          className="w-full bg-transparent px-3.5 py-2 pr-9 text-xs text-white outline-none font-mono"
+        />
+        <button
+          type="button"
+          onClick={() => setShowConfirmPassword((prev) => !prev)}
+          className="absolute right-2 text-slate-500 hover:text-emerald-400 focus:text-emerald-400 transition-colors outline-none cursor-pointer p-1 rounded-lg"
+          aria-label={showConfirmPassword ? "Ocultar confirmación" : "Mostrar confirmación"}
+        >
+          {showConfirmPassword ? (
+            <EyeOff className="w-3.5 h-3.5" />
+          ) : (
+            <Eye className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+    </div>
 
-                  {passwordError && (
-                    <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans mt-2 bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl">
-                      <ShieldAlert className="w-4 h-4 shrink-0" /> {passwordError}
-                    </p>
-                  )}
-                </div>
+  </div>
+
+  {/* Medidor de Fuerza de Contraseña */}
+  {newPassword.length > 0 && (
+    <div className="space-y-1 pt-1">
+      <div className="flex gap-1 h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 1 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
+        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 2 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
+        <div className={`h-full transition-all duration-300 ${passwordStrength.level >= 3 ? passwordStrength.color : 'bg-slate-800'} w-1/3`} />
+      </div>
+      <p className="text-[10px] font-mono flex justify-between text-slate-400">
+        <span>Nivel: <strong className={passwordStrength.level === 3 ? "text-emerald-400" : passwordStrength.level === 2 ? "text-amber-400" : "text-rose-400"}>{passwordStrength.text}</strong></span>
+        <span>Mín. 8 caracteres (Letras, Números y Símbolos)</span>
+      </p>
+    </div>
+  )}
+
+  {/* Mensaje de Error */}
+  {passwordError && (
+    <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans mt-2 bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl">
+      <ShieldAlert className="w-4 h-4 shrink-0" /> {passwordError}
+    </p>
+  )}
+</div>
 
                 {updateSuccess && (
                   <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold text-center">

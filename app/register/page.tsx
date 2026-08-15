@@ -168,7 +168,7 @@ export default function RegisterPage() {
           {/* CAMPO DE CELULAR CON CÓDIGO DE PAÍS */}
           <div className="space-y-1">
             <label className="text-[10px] font-extrabold text-slate-400 block tracking-wider uppercase">
-              TELÉFONO / CELULAR
+             CÓDIGO DE PAÍS / TELÉFONO 
             </label>
             <div className="bg-[#070a13] border border-slate-800/90 rounded-2xl flex items-center focus-within:border-emerald-500/80 transition-colors shadow-sm overflow-hidden">
               <div className="pl-3.5 flex items-center gap-2 border-r border-slate-800 text-slate-400">
