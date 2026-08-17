@@ -32,38 +32,34 @@ export async function getRatesAction() {
 export async function updateRatesAction(updates: { key: string; value: number }[]) {
   noStore();
   try {
-    // 🛡️ 1. Intentar obtener el token de autenticación (comprobando cookies auth_token o token)
     const cookieStore = await cookies();
     const token = cookieStore.get('auth_token')?.value || cookieStore.get('token')?.value;
 
-    let userId: string | null = null;
+    let userEmail: string | null = null;
 
+    // 1. Extraer el correo desde el JWT
     if (token) {
       try {
         const { payload } = await jwtVerify(token, JWT_SECRET);
-        userId = ((payload as any).userId || (payload as any).id) as string;
+        userEmail = (payload.email as string) || null;
       } catch (jwtErr) {
-        console.warn('⚠️ No se pudo decodificar el token para la auditoría:', jwtErr);
+        console.warn('⚠️ No se pudo decodificar el token para auditoría:', jwtErr);
       }
     }
 
-    // 🛡️ Backup: Si el JWT no traía el ID, buscamos por el email guardado en cookie o usador por defecto
-    if (!userId) {
-      const userEmail = cookieStore.get('user_email')?.value || 'danielgastelusotelo@gmail.com';
-      const userRes: any = await query('SELECT id FROM public.users WHERE email = $1 LIMIT 1', [userEmail]);
-      const foundUser = Array.isArray(userRes) ? userRes[0] : userRes?.rows?.[0];
-      if (foundUser?.id) {
-        userId = foundUser.id;
-      }
+    // 2. Si no vino en el JWT, recuperar desde la cookie user_email o usar el administrador por defecto
+    if (!userEmail) {
+      userEmail = cookieStore.get('user_email')?.value || 'danielgastelusotelo@gmail.com';
     }
 
-    // 2. Procesar cada tasa/comisión y registrar en auditoría
+    // 3. Procesar las actualizaciones
     for (const item of updates) {
-      // A. Obtener el valor antiguo antes de actualizar
+      // A. Obtener el valor antiguo
       const oldRes: any = await query('SELECT value FROM public.site_config WHERE key = $1 LIMIT 1', [item.key]);
       const oldValue = Array.isArray(oldRes) ? oldRes[0]?.value : oldRes?.rows?.[0]?.value;
+      const isUpdate = oldValue !== undefined && oldValue !== null;
 
-      // B. Actualizar o Insertar en site_config
+      // B. Actualizar la tabla principal
       await query(
         `INSERT INTO public.site_config (key, value, updated_at) 
          VALUES ($1::text, $2::numeric, NOW()) 
@@ -72,7 +68,6 @@ export async function updateRatesAction(updates: { key: string; value: number }[
         [item.key, item.value]
       );
 
-      // C. Regla para comisión bancaria
       if (item.key === 'transfer_commission_bank') {
         await query(
           `INSERT INTO public.site_config (key, value, updated_at) 
@@ -83,27 +78,25 @@ export async function updateRatesAction(updates: { key: string; value: number }[
         );
       }
 
-      // 📝 D. REGISTRO EN AUDITORÍA CON EL CHANGED_BY POBLADO
-      if (userId) {
-        await query(
-          `INSERT INTO public.site_config_audit (config_key, old_value, new_value, changed_by, action_type, changed_at)
-           VALUES ($1, $2, $3, $4::uuid, $5, NOW())`,
-          [
-            item.key,
-            oldValue !== undefined ? oldValue : null,
-            item.value,
-            userId,
-            oldValue !== undefined ? 'UPDATE' : 'INSERT'
-          ]
-        );
-      }
+      // 📝 C. REGISTRO ÚNICO EN AUDITORÍA CON EL CORREO ELECTRÓNICO
+      await query(
+        `INSERT INTO public.site_config_audit (config_key, old_value, new_value, changed_by, action_type, changed_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [
+          item.key,
+          isUpdate ? oldValue : null,
+          item.value,
+          userEmail,
+          isUpdate ? 'UPDATE' : 'INSERT'
+        ]
+      );
     }
 
-    // 3. Invalidación de Caché CDN
+    // 4. Invalidación de Caché
     revalidatePath('/');
     revalidatePath('/api/rates');
 
-    // 4. Notificación en Tiempo Real vía Pusher
+    // 5. Notificación vía Pusher
     try {
       const appId = cleanEnv(process.env.PUSHER_APP_ID);
       const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
@@ -120,7 +113,7 @@ export async function updateRatesAction(updates: { key: string; value: number }[
 
     return { success: true };
   } catch (err: any) {
-    console.error('Error crítico al actualizar tasas y comisiones en DB:', err);
+    console.error('Error crítico al actualizar tasas en DB:', err);
     return { success: false, error: err.message };
   }
 }
