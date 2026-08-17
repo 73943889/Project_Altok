@@ -37,7 +37,7 @@ export async function updateRatesAction(updates: { key: string; value: number }[
 
     let userEmail: string | null = null;
 
-    // 1. Extraer el correo desde el JWT
+    // 1. Intentar obtener el CORREO ELECTRÓNICO desde el JWT
     if (token) {
       try {
         const { payload } = await jwtVerify(token, JWT_SECRET);
@@ -47,19 +47,26 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       }
     }
 
-    // 2. Si no vino en el JWT, recuperar desde la cookie user_email o usar el administrador por defecto
+    // 2. Si el JWT no contenía el email, buscar el correo por la cookie o el email de sesión
     if (!userEmail) {
-      userEmail = cookieStore.get('user_email')?.value || 'danielgastelusotelo@gmail.com';
+      const storedEmail = cookieStore.get('user_email')?.value;
+      if (storedEmail) {
+        userEmail = storedEmail;
+      } else {
+        // Fallback: Si no hay cookie directa, consultar el correo del usuario en BD
+        const userRes: any = await query('SELECT email FROM public.users WHERE role = $1 LIMIT 1', ['admin']);
+        const foundUser = Array.isArray(userRes) ? userRes[0] : userRes?.rows?.[0];
+        userEmail = foundUser?.email || 'danielgastelusotelo@gmail.com';
+      }
     }
 
-    // 3. Procesar las actualizaciones
+    // 3. Registrar la actualización e insertar el correo en changed_by
     for (const item of updates) {
-      // A. Obtener el valor antiguo
       const oldRes: any = await query('SELECT value FROM public.site_config WHERE key = $1 LIMIT 1', [item.key]);
       const oldValue = Array.isArray(oldRes) ? oldRes[0]?.value : oldRes?.rows?.[0]?.value;
       const isUpdate = oldValue !== undefined && oldValue !== null;
 
-      // B. Actualizar la tabla principal
+      // Actualizar la tabla principal
       await query(
         `INSERT INTO public.site_config (key, value, updated_at) 
          VALUES ($1::text, $2::numeric, NOW()) 
@@ -78,7 +85,7 @@ export async function updateRatesAction(updates: { key: string; value: number }[
         );
       }
 
-      // 📝 C. REGISTRO ÚNICO EN AUDITORÍA CON EL CORREO ELECTRÓNICO
+      // 📝 REGISTRO DE AUDITORÍA: Guardar expresamente el Correo Electrónico
       await query(
         `INSERT INTO public.site_config_audit (config_key, old_value, new_value, changed_by, action_type, changed_at)
          VALUES ($1, $2, $3, $4, $5, NOW())`,
@@ -92,11 +99,11 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       );
     }
 
-    // 4. Invalidación de Caché
+    // 4. Invalidar caché en Next.js
     revalidatePath('/');
     revalidatePath('/api/rates');
 
-    // 5. Notificación vía Pusher
+    // 5. Emitir evento vía Pusher
     try {
       const appId = cleanEnv(process.env.PUSHER_APP_ID);
       const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
