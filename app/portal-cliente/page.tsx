@@ -155,7 +155,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     }
   }, [router]); // ✅ SOLUCIÓN: Eliminamos 'loading' de las dependencias
 
-  // ⚡ Sincronización en Tiempo Real unificada con Pusher (Transacciones y Seguridad de Cuenta)
+  // ⚡ Sincronización en Tiempo Real unificada con Pusher (Transacciones, Seguridad y Tasas)
   useEffect(() => {
     fetchPortalData();
 
@@ -165,16 +165,16 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     if (pusherKey) {
       pusherClient = new Pusher(pusherKey, { cluster: pusherCluster });
-      const channel = pusherClient.subscribe("operations-channel");
 
-      // 1. Escucha la actualización de transacciones en tiempo real
-      channel.bind("transaction-updated", (data: any) => {
+      // 1. Canal de Operaciones y Seguridad de Usuario
+      const opsChannel = pusherClient.subscribe("operations-channel");
+
+      opsChannel.bind("transaction-updated", (data: any) => {
         console.log("⚡ [Portal Pusher] Transacción actualizada detectada:", data);
         fetchPortalData(true);
       });
 
-      // 2. 🛡️ Escucha inhabilitación o cambios de estado de usuario (Kick-out automático usando userRef)
-      channel.bind("user-status-changed", (data: any) => {
+      opsChannel.bind("user-status-changed", (data: any) => {
         console.log("🛡️ [Portal Seguridad Pusher] Evento de estado de usuario recibido:", data);
         
         const currentUser = userRef.current;
@@ -183,6 +183,36 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
           router.push("/login?error=cuenta_inhabilitada");
         }
       });
+
+      // 2. ⚡ Canal de Tasas de Cambio en Tiempo Real (Misma lógica que la Calculadora)
+      const ratesChannel = pusherClient.subscribe("rates-channel");
+
+      ratesChannel.bind("rates-updated", (data: any) => {
+        console.log("⚡ [Portal Pusher] Tasas de cambio actualizadas recibidas:", data);
+        
+        // Si el evento trae el array de actualizaciones, actualizamos el estado inmediatamente
+        if (data && Array.isArray(data.updates)) {
+          setExchangeRates((prevRates) => {
+            let newEur = prevRates.eurToPen;
+            let newUsd = prevRates.usdToPen;
+
+            data.updates.forEach((item: { key: string; value: number }) => {
+              if (item.key === "exchange_rate_buy") {
+                newEur = Number(item.value).toFixed(4);
+              }
+              if (item.key === "exchange_rate_buy_usd") {
+                newUsd = Number(item.value).toFixed(4);
+              }
+            });
+
+            return { eurToPen: newEur, usdToPen: newUsd };
+          });
+        } else {
+          // Fallback: Si no viene payload formateado, re-consultamos los datos
+          fetchPortalData(true);
+        }
+      });
+
     } else {
       console.warn("⚠️ NEXT_PUBLIC_PUSHER_KEY no está definida en el cliente.");
     }
@@ -191,6 +221,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
       if (pusherClient) {
         pusherClient.unbind_all();
         pusherClient.unsubscribe("operations-channel");
+        pusherClient.unsubscribe("rates-channel");
         pusherClient.disconnect();
       }
     };
