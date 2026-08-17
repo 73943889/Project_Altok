@@ -46,50 +46,52 @@ export async function updateRatesAction(updates: { key: string; value: number }[
       }
     }
 
-    // 2. Definir la variable de sesión en PostgreSQL para que el Trigger la lea
-    if (userId) {
-      await query(`SET LOCAL app.current_user_id = $1;`, [userId]);
+    if (!userId) {
+      return { success: false, error: 'Usuario no autenticado para realizar esta acción.' };
     }
 
-    // 3. Persistencia con Auditoría Integrada en site_config
-    for (const item of updates) {
-      // Obtenemos el valor antiguo para auditoría manual si no usas Trigger
-      const oldRes: any = await query('SELECT value FROM public.site_config WHERE key = $1 LIMIT 1', [item.key]);
-      const oldValue = Array.isArray(oldRes) ? oldRes[0]?.value : oldRes?.rows?.[0]?.value;
+    // 🔒 2. Iniciar Transacción Atómica en Neon PostgreSQL
+    await query('BEGIN;');
 
-      // Actualizamos o insertamos la tasa
-      await query(
-        `INSERT INTO public.site_config (key, value, updated_at) 
-         VALUES ($1::text, $2::numeric, NOW()) 
-         ON CONFLICT (key) 
-         DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-        [item.key, item.value]
-      );
+    try {
+      // Definimos la variable de sesión dentro de LA MISMA transacción
+      await query(`SELECT set_config('app.current_user_id', $1, true);`, [userId]);
 
-      // Regla de respaldo para transferencia bancaria
-      if (item.key === 'transfer_commission_bank') {
+      for (const item of updates) {
+        // Actualizamos o insertamos la tasa (El Trigger automático registrará changed_by correctamente)
         await query(
           `INSERT INTO public.site_config (key, value, updated_at) 
            VALUES ($1::text, $2::numeric, NOW()) 
            ON CONFLICT (key) 
            DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-          ['transfer_commission', item.value]
+          [item.key, item.value]
         );
+
+        // Regla de respaldo para transferencia bancaria
+        if (item.key === 'transfer_commission_bank') {
+          await query(
+            `INSERT INTO public.site_config (key, value, updated_at) 
+             VALUES ($1::text, $2::numeric, NOW()) 
+             ON CONFLICT (key) 
+             DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+            ['transfer_commission', item.value]
+          );
+        }
       }
 
-      // 4. Inserción explícita en site_config_audit para asegurar changed_by (Si no usas Trigger automático)
-      await query(
-        `INSERT INTO public.site_config_audit (config_key, old_value, new_value, changed_by)
-         VALUES ($1, $2, $3, $4)`,
-        [item.key, oldValue || null, item.value, userId]
-      );
+      // Confirmamos la transacción
+      await query('COMMIT;');
+    } catch (dbErr) {
+      // Si algo falla, revertimos los cambios
+      await query('ROLLBACK;');
+      throw dbErr;
     }
 
-    // 5. Invalidación de Caché
+    // 3. Invalidación de Caché CDN
     revalidatePath('/');
     revalidatePath('/api/rates');
 
-    // 6. Notificación en Tiempo Real vía Pusher
+    // 4. Notificación en Tiempo Real vía Pusher
     try {
       const appId = cleanEnv(process.env.PUSHER_APP_ID);
       const key = cleanEnv(process.env.NEXT_PUBLIC_PUSHER_KEY);
