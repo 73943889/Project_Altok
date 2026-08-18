@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { env } from "@/lib/env";
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(request: Request) {
   try {
@@ -14,6 +13,9 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    // Instanciación Lazy: se ejecuta en runtime y no durante 'next build'
+    const resend = new Resend(env.RESEND_API_KEY);
 
     // Configuración del contenido según el estado
     let subject = `Actualización de tu Remesa ${operationCode} - Altok€`;
@@ -43,7 +45,7 @@ export async function POST(request: Request) {
         break;
     }
 
-    // Plantilla HTML Responsive & Dark-friendly
+    // Plantilla HTML Responsive
     const htmlTemplate = `
       <!DOCTYPE html>
       <html>
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
               </div>
             </div>
 
-            <div className="footer">
+            <div class="footer">
               <p>Este es un correo automático generado por Altok€. No respondas a esta dirección.</p>
               <p>© 2026 Altok€ SAC. Todos los derechos reservados.</p>
             </div>
