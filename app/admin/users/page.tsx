@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { getAdminUsersAction } from "@/app/actions/users";
 import AdminUsersClient from "./AdminUsersClient";
-
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {

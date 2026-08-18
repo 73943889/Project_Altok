@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { SignJWT } from 'jose';
-
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "tu_clave_secreta_super_segura_para_jwt"
 );

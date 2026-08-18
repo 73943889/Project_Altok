@@ -1,7 +1,6 @@
 // app/api/events/route.ts
 import { NextRequest } from 'next/server';
 import { globalEventStore } from '@/lib/eventsStore';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {

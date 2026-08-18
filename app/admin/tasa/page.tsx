@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import { query } from "@/lib/db";
 import { unstable_noStore as noStore } from "next/cache";
 import AdminTasaClient from "./AdminTasaClient";
-
 export const dynamic = "force-dynamic";
 
 export default async function AdminTasaPage() {

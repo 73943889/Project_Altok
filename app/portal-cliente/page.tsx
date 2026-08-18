@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 import Pusher from "pusher-js";
 import {   LogOut,   Send,   Clock,  CheckCircle2,   User,   ShieldCheck,   Phone,  ChevronDown,  PlusCircle,   Search,  Filter,  Settings,  TrendingUp,  HelpCircle,  ArrowUpRight,  RefreshCw,  ShieldAlert} from "lucide-react";
 import { getPortalData, updateUserProfileAndPasswordAction } from "@/app/actions/portalClient";
-
 export default function PortalClientePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);

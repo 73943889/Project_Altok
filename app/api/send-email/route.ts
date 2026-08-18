@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { env } from "@/lib/env";
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();

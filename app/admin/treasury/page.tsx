@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { getTreasuryOperationsAction } from "@/app/actions/treasury";
 import TreasuryClient from "./AdminTreasuryClient";
-
 export const dynamic = "force-dynamic";
 
 export default async function TreasuryDashboardPage() {

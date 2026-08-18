@@ -3,7 +3,6 @@ import { jwtVerify } from "jose";
 import { query } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { AdminContent } from "@/app/admin/AdminContent";
-
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "tu_clave_secreta_super_segura_para_jwt"
 );
