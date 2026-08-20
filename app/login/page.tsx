@@ -2,6 +2,7 @@
 
 import { useState, useTransition, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { Lock, Mail, ArrowRight, Building2, AlertCircle, Loader2,Eye, EyeOff } from "lucide-react";
 import { loginAction } from "@/app/actions/auth";
 import Link from "next/link";
@@ -43,14 +44,27 @@ function LoginFormContent() {
   return (
     <div className="max-w-md w-full bg-slate-900/90 border border-slate-800/80 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10">
       
-      {/* Header / Logo */}
-      <div className="text-center space-y-2 mb-8">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-emerald-500/20 mx-auto">
-          <Building2 className="w-6 h-6 text-slate-950" />
-        </div>
-        <h1 className="text-2xl font-black tracking-tight text-white">Acceso a Altok€</h1>
-        <p className="text-xs text-slate-400">Ingresa tus credenciales para acceder al sistema</p>
-      </div>
+   {/* Header / Logo de Alto Impacto */}
+<div className="flex flex-col items-center justify-center text-center mb-8">
+  <Link 
+    href="/" 
+    className="inline-block transition-transform duration-300 hover:scale-105 mb-3 select-none outline-none"
+    aria-label="Volver al inicio"
+  >
+    <Image
+      src="/logo.webp" /* Cambia a .webp si corresponde */
+      alt="Altok€! Envíos rápidos y seguros"
+      width={400}
+      height={120}
+      priority
+        className="w-56 sm:w-64 md:w-72 h-auto object-contain mix-blend-screen drop-shadow-[0_0_25px_rgba(16,185,129,0.2)]"
+    />
+  </Link>
+
+  <p className="text-sm text-slate-400 mt-1">
+    Ingresa tus credenciales para acceder al sistema
+  </p>
+</div>
 
       {/* Mensajes de Alerta */}
       {(errorType === "cuenta_inhabilitada" || errorMessage) && (

@@ -17,27 +17,29 @@ export function Navbar({ session, profileName, loadingAuth = false }: NavbarProp
   const userRole = session?.user?.role || session?.role || "client";
   const isAdmin = userEmail === "terry@gmail.com" || userRole === "admin" || userEmail.toLowerCase().includes("admin");
 
-  return (
-    <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-28 flex items-center justify-between">
-        
-        {/* Logo Corporativo */}
-        <Link 
-          href="/" 
-          className="flex items-center py-2 my-auto group select-none"
-          aria-label="Ir al inicio de Altok€!"
-        >
-          <div className="relative flex items-center isolate">
-            <Image
-              src="/logo.png"
-              alt="Altok€! Envíos rápidos y seguros"
-              width={280}
-              height={100}
-              priority
-              className="object-contain w-auto h-16 sm:h-20 md:h-[5.2rem] mix-blend-screen transition-all duration-300 group-hover:brightness-110"
-            />
-          </div>
-        </Link>
+return (
+<header className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
+  <div className="mx-auto flex h-24 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    
+    {/* Logo Corporativo Optimizado */}
+    <Link 
+      href="/" 
+      className="group flex items-center shrink-0 select-none outline-none"
+      aria-label="Ir al inicio de Altok€!"
+    >
+      <Image
+        src="/logo.webp" /* Cambia a .webp si lo exportaste en ese formato */
+        alt="Altok€! Envíos rápidos y seguros"
+        width={350}
+        height={90} /* Proporción real de tu nuevo recorte */
+        priority
+        /* 
+          Al no tener espacios vacíos, una altura de 48px a 64px (h-12 a h-16) 
+          se verá grande, nítida y perfectamente alineada.
+        */
+        className="w-auto h-12 sm:h-14 md:h-16 object-contain mix-blend-screen transition-all duration-300 group-hover:brightness-110"
+      />
+    </Link>
 
         {/* Enlaces de Navegación Central */}
         <nav className="hidden md:flex items-center gap-8 text-base font-semibold text-slate-200">

@@ -311,10 +311,10 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
             <Link href="/" className="flex items-center transition-opacity hover:opacity-90 py-1" aria-label="Ir al inicio">
               <div className="relative flex items-center">
                 <Image
-                  src="/logo.png"
+                  src="/logo.webp"
                   alt="Altok€!"
                   width={240}
-                  height={80}
+                  height={200}
                   priority
                   className="object-contain w-auto h-14 sm:h-16 md:h-[4.5rem]"
                 />

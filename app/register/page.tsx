@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { Building2, User, Mail, Lock, Phone, ArrowRight } from "lucide-react";
-
+import Image from "next/image";
 export default function RegisterPage() {
   const router = useRouter();
   
@@ -81,9 +81,20 @@ export default function RegisterPage() {
         
         {/* Header / Logo */}
         <div className="text-center space-y-2 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-emerald-500/20 mx-auto">
-            <Building2 className="w-6 h-6 text-slate-950" />
-          </div>
+          <Link 
+    href="/" 
+    className="inline-block transition-transform duration-300 hover:scale-105 mb-3 select-none outline-none"
+    aria-label="Volver al inicio"
+  >
+    <Image
+      src="/logo.webp" /* Cambia a .webp si corresponde */
+      alt="Altok€! Envíos rápidos y seguros"
+      width={400}
+      height={120}
+      priority
+        className="w-56 sm:w-64 md:w-72 h-auto object-contain mix-blend-screen drop-shadow-[0_0_25px_rgba(16,185,129,0.2)]"
+    />
+  </Link>
           <h1 className="text-2xl font-black tracking-tight text-white">Crea tu usuario</h1>
           <p className="text-xs text-slate-400">Regístrate para empezar a enviar dinero de forma rápida y segura</p>
         </div>

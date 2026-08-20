@@ -5,7 +5,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { Mail, ArrowLeft, CheckCircle2, ShieldAlert } from "lucide-react";
 import { requestPasswordResetAction } from "@/app/actions/auth";
-
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
@@ -37,16 +36,20 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md bg-slate-900 border border-slate-800/80 rounded-3xl p-8 shadow-2xl space-y-6">
         
         <div className="text-center space-y-3">
-          <Link href="/" className="inline-block transition-opacity hover:opacity-90">
-            <Image
-              src="/logo.png"
-              alt="Altok€!"
-              width={180}
-              height={60}
-              priority
-              className="mx-auto h-12 w-auto object-contain"
-            />
-          </Link>
+                    <Link 
+              href="/" 
+              className="inline-block transition-transform duration-300 hover:scale-105 mb-3 select-none outline-none"
+              aria-label="Volver al inicio"
+            >
+              <Image
+                src="/logo.webp" /* Cambia a .webp si corresponde */
+                alt="Altok€! Envíos rápidos y seguros"
+                width={400}
+                height={120}
+                priority
+                  className="w-56 sm:w-64 md:w-72 h-auto object-contain mix-blend-screen drop-shadow-[0_0_25px_rgba(16,185,129,0.2)]"
+              />
+            </Link>
           <div className="space-y-1">
             <h1 className="text-xl font-black text-white tracking-tight">Recuperar Acceso</h1>
             <p className="text-xs text-slate-400">
