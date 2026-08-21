@@ -1,9 +1,11 @@
-"use client";
+'use client';
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createTransactionAction, updateTransactionBankAction } from "@/app/actions/transaction";
 import { ShieldAlert, Phone } from "lucide-react";
+import { DESTINATION_OPTIONS } from "@/lib/constants";
+import { FormValidator } from "@/lib/validations";
 
 interface TransferModalProps {
   isOpen: boolean;
@@ -16,40 +18,6 @@ interface TransferModalProps {
   userEmail?: string;
   userFullName?: string;
 }
-
-interface DestinationOption {
-  id: string;
-  name: string;
-  country: "PEN" | "EUR" | "USD";
-  type: "bank" | "wallet";
-}
-
-const DESTINATION_OPTIONS: DestinationOption[] = [
-  // --- PERÚ (PEN) - BANCOS ---
-  { id: "BCP", name: "BCP (Banco de Crédito del Perú)", country: "PEN", type: "bank" },
-  { id: "BBVA_PE", name: "BBVA Perú", country: "PEN", type: "bank" },
-  { id: "Interbank", name: "Interbank", country: "PEN", type: "bank" },
-  { id: "Scotiabank", name: "Scotiabank", country: "PEN", type: "bank" },
-  // --- PERÚ (PEN) - WALLETS ---
-  { id: "Yape", name: "Yape (Billetera Digital)", country: "PEN", type: "wallet" },
-  { id: "Plin", name: "Plin (Billetera Digital)", country: "PEN", type: "wallet" },
-  { id: "Bim", name: "Bim Monedero Móvil", country: "PEN", type: "wallet" },
-
-  // --- EUROPA / ESPAÑA (EUR) - BANCOS ---
-  { id: "CaixaBank", name: "CaixaBank", country: "EUR", type: "bank" },
-  { id: "Santander", name: "Banco Santander", country: "EUR", type: "bank" },
-  { id: "BBVA_ES", name: "BBVA España", country: "EUR", type: "bank" },
-  { id: "Sabadell", name: "Banco Sabadell", country: "EUR", type: "bank" },
-  // --- EUROPA / ESPAÑA (EUR) - WALLETS ---
-  { id: "Bizum", name: "Bizum (Pago Móvil)", country: "EUR", type: "wallet" },
-
-  // --- ESTADOS UNIDOS (USD) - BANCOS ---
-  { id: "BankofAmerica", name: "Bank of America", country: "USD", type: "bank" },
-  { id: "CapitalOne", name: "Capital One", country: "USD", type: "bank" },
-  { id: "JPMorganChase", name: "JPMorgan Chase", country: "USD", type: "bank" },
-  // --- ESTADOS UNIDOS (USD) - WALLETS ---
-  { id: "Zelle", name: "Zelle Transfer", country: "USD", type: "wallet" },
-];
 
 interface CountryCodeOption {
   code: string;
@@ -73,6 +41,7 @@ const DOCUMENT_TYPES: DocumentTypeOption[] = [
   { id: "NIE", label: "NIE (España)" },
   { id: "PASAPORTE", label: "Pasaporte" },
   { id: "CE", label: "Carné Extranj." },
+  { id: "ID", label: "ID" },
 ];
 
 interface CollectorAccount {
@@ -130,7 +99,7 @@ const INITIAL_FORM_DATA: TransferFormData = {
   email: "",
   documentType: "",
   documentNumber: "",
-  countryCode: "",
+  countryCode: "+51",
   phone: "",
   recipientFirstName: "",
   recipientPaternalSurname: "",
@@ -177,6 +146,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     documentNumber?: string;
     countryCode?: string;
     phone?: string;
+    email?: string;
     recipientDestinationId?: string;
     recipientAccount?: string;
     general?: string;
@@ -185,7 +155,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [selectedCollectorAccount, setSelectedCollectorAccount] = useState<CollectorAccount | null>(null);
 
-  // 🎨 PALETA DINÁMICA DE COLORES SEGÚN LA MONEDA DE ENVÍO
   const isEuro = sendCurrency === "EUR";
 
   const themeColors = {
@@ -196,7 +165,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     borderFocusGroup: isEuro ? "focus-within:border-blue-500" : "focus-within:border-emerald-500",
     ringAccent: isEuro ? "border-blue-500 ring-1 ring-blue-500/50" : "border-emerald-500 ring-1 ring-emerald-500/50",
     badgeAccent: isEuro ? "bg-blue-500 text-slate-950" : "bg-emerald-500 text-slate-950",
-    scrollbarThumb: isEuro ? "hover:bg-blue-400" : "hover:bg-emerald-400",
   };
 
   useEffect(() => {
@@ -329,8 +297,22 @@ export const TransferModal: React.FC<TransferModalProps> = ({
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    const cleanedValue = value.replace(/[0-9]/g, "");
-    setFormData({ ...formData, [name]: cleanedValue });
+    const sanitizedValue = FormValidator.filterNameInput(value, 50);
+    setFormData({ ...formData, [name]: sanitizedValue });
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sanitizedPhone = FormValidator.filterPhoneInput(e.target.value, formData.countryCode);
+    setFormData({ ...formData, phone: sanitizedPhone });
+    if (formErrors.phone) setFormErrors({ ...formErrors, phone: undefined });
+  };
+
+  const handleDocumentNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sanitizedDoc = FormValidator.filterDocumentInput(e.target.value, formData.documentType);
+    setFormData({ ...formData, documentNumber: sanitizedDoc });
+    if (formErrors.documentNumber) {
+      setFormErrors({ ...formErrors, documentNumber: undefined });
+    }
   };
 
   const handleChange = (
@@ -352,24 +334,42 @@ export const TransferModal: React.FC<TransferModalProps> = ({
     }
     if (!formData.documentNumber.trim()) {
       errors.documentNumber = "Por favor ingresa tu número de documento.";
+    } else if (!FormValidator.isValidDocument(formData.documentNumber, formData.documentType)) {
+      errors.documentNumber = `El número de documento para ${formData.documentType} no es válido.`;
+    }
+
+    if (!formData.email.trim() || !FormValidator.isValidEmail(formData.email)) {
+      errors.email = "Formato de correo electrónico inválido.";
     }
     if (!formData.countryCode) {
       errors.countryCode = "Por favor selecciona un código de teléfono.";
     }
-    if (!formData.phone.trim()) {
-      errors.phone = "Por favor ingresa tu número de teléfono.";
+    if (!formData.phone.trim() || !FormValidator.isValidPhone(formData.phone, formData.countryCode)) {
+      errors.phone = `Número de teléfono inválido para ${formData.countryCode}.`;
     }
     if (!formData.recipientDestinationId) {
       errors.recipientDestinationId = "Por favor selecciona una entidad de destino válida.";
     }
+    
+    // Validación estricta según las especificaciones bancarias de la región
     if (!formData.recipientAccount.trim()) {
-      errors.recipientAccount = "Por favor ingresa el número de cuenta o celda de destino.";
+      errors.recipientAccount = "Por favor ingresa el número de cuenta o celular de destino.";
+    } else if (!FormValidator.isValidRecipientAccount(formData.recipientAccount, receiveCurrency, formData.destinationType)) {
+      if (receiveCurrency === "EUR") {
+        errors.recipientAccount = "El IBAN europeo debe tener exactamente 24 caracteres (Ej. ES + 22 dígitos).";
+      } else if (receiveCurrency === "PEN") {
+        errors.recipientAccount = "La cuenta en Perú debe tener entre 10 y 20 dígitos (o CCI de 20 dígitos exactos).";
+      } else if (receiveCurrency === "USD") {
+        errors.recipientAccount = "La cuenta en EE. UU. debe tener entre 8 y 17 dígitos.";
+      } else {
+        errors.recipientAccount = "Número de cuenta o billetera inválido.";
+      }
     }
 
     setFormErrors(errors);
 
     if (Object.keys(errors).length > 0) {
-      if (errors.documentType || errors.documentNumber) {
+      if (errors.documentType || errors.documentNumber || errors.email) {
         documentNumberInputRef.current?.focus();
       } else if (errors.countryCode || errors.phone) {
         phoneInputRef.current?.focus();
@@ -395,7 +395,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       const consolidatedRecipient = `${formData.recipientFirstName.trim()} ${formData.recipientPaternalSurname.trim()} ${formData.recipientMaternalSurname.trim()}`;
       
       const selectedDestObj = DESTINATION_OPTIONS.find((d) => d.id === formData.recipientDestinationId);
-      const recipientBankString = selectedDestObj ? `${selectedDestObj.name} (${formData.destinationType.toUpperCase()})` : formData.destinationType;
+      const recipientBankString = selectedDestObj ? selectedDestObj.id : formData.recipientDestinationId;
 
       const collectorList = CORPORATE_COLLECTOR_ACCOUNTS[sendCurrency] || CORPORATE_COLLECTOR_ACCOUNTS.EUR;
       const filteredAccounts = collectorList.filter((acc) => {
@@ -417,7 +417,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
         receive_currency: receiveCurrency,
         exchange_rate_applied: Number(calculatedRate.toFixed(4)),
         recipient_name: consolidatedRecipient,
-        recipient_bank: recipientBankString,
+        recipient_bank: recipientBankString as any,
         recipient_account: formData.recipientAccount,
         bank: finalBankName,
         transfer_commission: Number(activeCommission),
@@ -544,7 +544,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                 Enviarás {sendAmount} {sendCurrency} para abonar {receiveAmount} {receiveCurrency}
               </p>
 
-              {/* Error General */}
               {formErrors.general && (
                 <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4 shrink-0" />
@@ -608,9 +607,9 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     onChange={handleChange}
                     className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none ${themeColors.borderFocus} transition-all font-mono`}
                   />
+                  {formErrors.email && <p className="text-[11px] text-rose-400 mt-1">{formErrors.email}</p>}
                 </div>
 
-                {/* TIPO DE DOCUMENTO Y NÚMERO */}
                 <div className="grid grid-cols-3 gap-2">
                   <div className="relative" ref={docTypeDropdownRef}>
                     <button
@@ -633,7 +632,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                             key={item.id}
                             type="button"
                             onClick={() => {
-                              setFormData({ ...formData, documentType: item.id });
+                              setFormData({ ...formData, documentType: item.id, documentNumber: "" });
                               setIsDocTypeOpen(false);
                               if (formErrors.documentType) setFormErrors({ ...formErrors, documentType: undefined });
                             }}
@@ -657,12 +656,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     name="documentNumber"
                     placeholder="N° Documento"
                     value={formData.documentNumber}
-                    onChange={handleChange}
-                    className={`col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm ${themeColors.borderFocus} outline-none`}
+                    onChange={handleDocumentNumberChange}
+                    className={`col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm ${themeColors.borderFocus} outline-none font-mono`}
                   />
                 </div>
 
-                {/* ERROR INLINE DOCUMENTO */}
                 {(formErrors.documentType || formErrors.documentNumber) && (
                   <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans">
                     <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
@@ -670,7 +668,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   </p>
                 )}
 
-                {/* CÓDIGO DE PAÍS / TELÉFONO */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                     CÓDIGO DE PAÍS / TELÉFONO
@@ -678,7 +675,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   
                   <div className={`relative flex items-center bg-slate-950 border border-slate-800 rounded-2xl ${themeColors.borderFocusGroup} transition-all shadow-inner`}>
                     
-                    {/* Contenedor del Dropdown de País */}
                     <div className="relative flex items-center border-r border-slate-800 bg-slate-900/60 rounded-l-2xl z-30 shrink-0" ref={countryCodeDropdownRef}>
                       <button
                         type="button"
@@ -697,7 +693,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                         <span className={`text-[10px] ${themeColors.textAccent} leading-none`}>▼</span>
                       </button>
 
-                      {/* Menú Desplegable flotante */}
                       {isCountryCodeOpen && (
                         <div className="absolute left-0 top-full mt-1.5 w-36 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-50 p-1.5 space-y-1 font-mono">
                           {COUNTRY_CODES.map((item) => (
@@ -734,24 +729,14 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       ref={phoneInputRef}
                       type="tel"
                       name="phone"
-                      placeholder="987 654 321"
+                      placeholder="987654321"
                       value={formData.phone}
-                      onInput={(e) => {
-                        const target = e.target as HTMLInputElement;
-                        target.value = target.value.replace(/\D/g, "");
-                      }}
-                      onChange={handleChange}
-                      onKeyDown={(e) => {
-                        if (["e", "E", "+", "-", "."].includes(e.key)) {
-                          e.preventDefault();
-                        }
-                      }}
+                      onChange={handlePhoneChange}
                       className="w-full bg-transparent text-xs text-white placeholder-slate-600 px-4 py-3 outline-none font-mono rounded-r-2xl"
                     />
                   </div>
                 </div>
 
-                {/* ERROR INLINE TELÉFONO */}
                 {(formErrors.countryCode || formErrors.phone) && (
                   <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans">
                     <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
@@ -759,7 +744,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   </p>
                 )}
 
-                {/* 2. DATOS DEL DESTINATARIO */}
                 <h3 className={`text-xs font-semibold tracking-wider uppercase pt-2 ${themeColors.textAccent}`}>
                   2. Datos del Destinatario
                 </h3>
@@ -804,12 +788,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                   </div>
                 </div>
 
-                {/* PESTAÑAS: BANCOS Y BILLETERAS */}
                 <div className="pt-2 space-y-2">
                   <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, destinationType: "bank", recipientDestinationId: "" })}
+                      onClick={() => setFormData({ ...formData, destinationType: "bank", recipientDestinationId: "", recipientAccount: "" })}
                       className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                         formData.destinationType === "bank"
                           ? `${themeColors.bgAccent} text-slate-950 shadow-sm`
@@ -820,7 +803,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, destinationType: "wallet", recipientDestinationId: "" })}
+                      onClick={() => setFormData({ ...formData, destinationType: "wallet", recipientDestinationId: "", recipientAccount: "" })}
                       className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                         formData.destinationType === "wallet"
                           ? `${themeColors.bgAccent} text-slate-950 shadow-sm`
@@ -878,29 +861,31 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                       )}
                     </div>
 
+                    {/* 🛡️ INPUT DE CUENTA CON FILTRADO EN TIEMPO REAL ESTRICTO SEGÚN DIVISA */}
                     <input
                       ref={recipientAccountInputRef}
                       type="text"
                       name="recipientAccount"
                       placeholder={
                         formData.destinationType === "bank"
-                          ? "N° Cuenta / IBAN / CCI"
+                          ? (receiveCurrency === "EUR" ? "Ej. ES910182..." : "N° Cuenta / CCI")
                           : "N° Celular / Wallet"
                       }
-                      minLength={9}
-                      maxLength={34}
                       value={formData.recipientAccount}
                       onChange={(e) => {
-                        const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        const sanitizedAccount = FormValidator.filterRecipientAccountInput(
+                          e.target.value,
+                          receiveCurrency,
+                          formData.destinationType
+                        );
                         handleChange({
-                          target: { name: "recipientAccount", value }
+                          target: { name: "recipientAccount", value: sanitizedAccount }
                         } as unknown as React.ChangeEvent<HTMLInputElement>);
                       }}
-                      className={`col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm ${themeColors.borderFocus} outline-none`}
+                      className={`col-span-2 rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-sm ${themeColors.borderFocus} outline-none font-mono`}
                     />
                   </div>
 
-                  {/* ERROR INLINE DESTINO Y CUENTA */}
                   {(formErrors.recipientDestinationId || formErrors.recipientAccount) && (
                     <p className="text-[11px] text-rose-400 flex items-center gap-1 font-sans">
                       <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
@@ -908,7 +893,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                     </p>
                   )}
 
-                  {/* LABEL DE COMISIÓN DINÁMICO */}
                   <div className="flex justify-between items-center px-1 pt-1 text-[11px] font-medium text-slate-400">
                     <span>Comisión de transferencia ({formData.destinationType === "bank" ? "Banco" : "Wallet"}):</span>
                     <span className={`${themeColors.textAccent} font-bold`}>
@@ -951,7 +935,6 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                 eligiendo cualquiera de nuestras cuentas oficiales:
               </p>
 
-              {/* CUENTAS COLECTORAS */}
               <div className="w-full max-h-72 overflow-y-auto space-y-2.5 pr-2 text-left text-xs font-mono custom-scrollbar">
                 {(() => {
                   const allAccounts = CORPORATE_COLLECTOR_ACCOUNTS[sendCurrency] || CORPORATE_COLLECTOR_ACCOUNTS.EUR;

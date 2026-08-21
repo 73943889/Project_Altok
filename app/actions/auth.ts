@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import { redirect } from 'next/navigation';
 import { Resend } from 'resend';
-
+import { LoginRequestSchema } from '@/lib/validations/api-contracts';
 if (!process.env.JWT_SECRET) {
   throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
 }
@@ -36,24 +36,40 @@ export async function saveUserSession(userId: string) {
   return refreshToken;
 }
 
+// Tipado estricto para reemplazar 'any' sin alterar los tipos permitidos
+export type LoginActionInput = FormData | { email?: string; password?: string };
+
 // 2. Acción de Inicio de Sesión
-export async function loginAction(input: any) {
+export async function loginAction(input: LoginActionInput) {
   try {
-    let email: string = '';
-    let password: string = '';
+    let rawEmail: string = '';
+    let rawPassword: string = '';
 
+    // 1. Mantener extracción dual para soporte de FormData u Objeto JSON
     if (input instanceof FormData) {
-      email = String(input.get('email') || '').trim();
-      password = String(input.get('password') || '');
+      rawEmail = String(input.get('email') || '').trim();
+      rawPassword = String(input.get('password') || '');
     } else if (input && typeof input === 'object') {
-      email = String(input.email || '').trim();
-      password = String(input.password || '');
+      rawEmail = String(input.email || '').trim();
+      rawPassword = String(input.password || '');
     }
 
-    if (!email || !password) {
-      return { success: false, error: 'Por favor completa todos los campos.' };
+    // 🛡️ 2. Validar contrato de entrada con Zod (Zero-Trust)
+    const validation = LoginRequestSchema.safeParse({
+      email: rawEmail,
+      password: rawPassword,
+    });
+
+    if (!validation.success) {
+      return { 
+        success: false, 
+        error: 'Por favor completa todos los campos con un formato válido.' 
+      };
     }
 
+    const { email, password } = validation.data;
+
+    // 3. Consulta a Neon PostgreSQL
     const dbResponse: any = await query(
       'SELECT id, full_name, email, password_hash, role, is_active FROM public.users WHERE email = $1 LIMIT 1',
       [email]
@@ -71,12 +87,13 @@ export async function loginAction(input: any) {
       return { success: false, error: 'Error de configuración en la cuenta del usuario.' };
     }
 
-    // Verificación segura delegada al módulo nativo C++ de bcrypt
+    // 4. Verificación segura delegada al módulo nativo C++ de bcrypt
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
       return { success: false, error: 'Credenciales inválidas. Contraseña incorrecta.' };
     }
 
+    // 5. Verificación de estado de cuenta
     const isActive = user.is_active === true || user.is_active === 't' || user.is_active === 1;
     if (!isActive) {
       return { 
@@ -87,22 +104,25 @@ export async function loginAction(input: any) {
 
     const userRole = (user.role || 'client').toLowerCase().trim();
 
-   // 1. Guardas el token generado para la BD en la constante refreshToken
-const refreshToken = await saveUserSession(user.id);
+    // 6. Guardar la sesión única (1:1) en la base de datos
+    const refreshToken = await saveUserSession(user.id);
 
-// 2. Firmas el JWT pasando la constante dentro de sessionToken
-const token = await new SignJWT({ 
-  userId: user.id, 
-  email: user.email, 
-  role: userRole,
-  isActive: isActive,
-  sessionToken: refreshToken // 👈 Ahora sí viaja la clave única dentro del JWT de la cookie
-})
-  .setProtectedHeader({ alg: 'HS256' })
-  .setIssuedAt()
-  .setExpirationTime('7d')
-  .sign(JWT_SECRET);
+    // 7. Firma de JWT con soporte unificado de claims (id, userId, sub y sessionToken)
+    const token = await new SignJWT({ 
+      id: user.id,
+      userId: user.id, 
+      email: user.email, 
+      role: userRole,
+      isActive: isActive,
+      sessionToken: refreshToken // Mantiene la clave única dentro del JWT
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject(String(user.id))
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(JWT_SECRET);
 
+    // 8. Configuración de Cookies HttpOnly
     const cookieStore = await cookies();
     
     cookieStore.set({

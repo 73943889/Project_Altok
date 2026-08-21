@@ -1,10 +1,10 @@
-// app/actions/transaction.ts
 'use server';
 
 import { query } from "@/lib/db";
 import { unstable_noStore as noStore } from 'next/cache';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { CreateTransactionRequestSchema } from "@/lib/validations/api-contracts";
 
 if (!process.env.JWT_SECRET) {
   throw new Error("CRITICAL_ERROR: La variable de entorno JWT_SECRET no está definida.");
@@ -83,12 +83,34 @@ export async function createTransactionAction(payload: TransactionPayload) {
       return { success: false, error: "TRANSACCION_DENEGADA: Tu cuenta ha sido inhabilitada por un administrador." };
     }
 
-    // ✅ 3. LÓGICA DE NEGOCIO ORIGINAL (El usuario es legítimo y está activo)
+    // 🛡️ 3. VALIDACIÓN DE CONTRATO CON ZOD (NUEVA CAPA DE SEGURIDAD)
+    // Extraemos la clave limpia del banco (ej. "BCP" de "BCP (Banco de Crédito del Perú) (BANK)")
+    const cleanBankId = payload.recipient_bank?.split(' ')[0] || payload.recipient_bank;
+
+    const validation = CreateTransactionRequestSchema.safeParse({
+      sendAmount: payload.send_amount,
+      sendCurrency: payload.send_currency,
+      receiveCurrency: payload.receive_currency,
+      recipientName: payload.recipient_name,
+      recipientBank: cleanBankId,
+      recipientAccount: payload.recipient_account,
+      commissionType: payload.commission_type || 'bank',
+    });
+
+    if (!validation.success) {
+      return {
+        success: false,
+        error: "Los datos de la transferencia no cumplen con el contrato de validación.",
+        details: validation.error.flatten().fieldErrors,
+      };
+    }
+
+    // ✅ 4. LÓGICA DE NEGOCIO ORIGINAL (El usuario es legítimo, activo y el payload es válido)
     if (!payload.user_id || payload.send_amount <= 0) {
       return { success: false, error: "Datos de transferencia inválidos." };
     }
 
-    const operationCode = `VT-${Math.floor(100000 + Math.random() * 900000)}`;
+    const operationCode = `ALT-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const clientQuery = `
       INSERT INTO public.clients (full_name, email, document_type, document_number, phone)

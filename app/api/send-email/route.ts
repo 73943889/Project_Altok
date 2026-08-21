@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { env } from "@/lib/env";
+import { SendEmailRequestSchema } from "@/lib/validations/api-contracts";
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, fullName, operationCode, status, sendAmount, sendCurrency, receiveAmount, receiveCurrency } = body;
 
-    if (!email || !operationCode || !status) {
+    // Validar payload con Zod
+    const validation = SendEmailRequestSchema.safeParse(body);
+    if (!validation.success) {
       return NextResponse.json(
-        { error: "Faltan parámetros obligatorios para el envío." },
+        { error: "Parámetros de envío no válidos.", details: validation.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+
+   const { email, fullName, operationCode, status, sendAmount, sendCurrency, receiveAmount, receiveCurrency } = validation.data;
 
     // Instanciación Lazy: se ejecuta en runtime y no durante 'next build'
     const resend = new Resend(env.RESEND_API_KEY);

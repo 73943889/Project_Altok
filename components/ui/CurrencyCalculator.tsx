@@ -14,7 +14,9 @@ export function CurrencyCalculator() {
 
   const [originCurrency, setOriginCurrency] = useState<OriginCurrency>("USD");
   const [direction, setDirection] = useState<"ORIGIN_PEN" | "PEN_ORIGIN">("ORIGIN_PEN");
-  const [sendAmount, setSendAmount] = useState<string>("390.00");
+  
+  // Estado inicial entero controlado
+  const [sendAmount, setSendAmount] = useState<string>("390");
   
   const [buyRateEur, setBuyRateEur] = useState<number>(3.76);
   const [sellRateEur, setSellRateEur] = useState<number>(3.90);
@@ -36,6 +38,25 @@ export function CurrencyCalculator() {
     });
   };
 
+  // 🛡️ Manejador estricto por tecleo
+  const handleSendAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputTarget = e.target;
+    const cleanValue = inputTarget.value.replace(/\D/g, "").slice(0, 6);
+
+    inputTarget.value = cleanValue;
+    setSendAmount(cleanValue);
+  };
+
+  // 🛡️ Barrera Anti-Pegado
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData('text');
+    const cleanPaste = pastedText.replace(/\D/g, "").slice(0, 6);
+
+    e.currentTarget.value = cleanPaste;
+    setSendAmount(cleanPaste);
+  };
+
   const fetchRates = async () => {
     try {
       setLoadingRate(true);
@@ -54,7 +75,6 @@ export function CurrencyCalculator() {
   useEffect(() => {
     fetchRates();
 
-    // 1. Manejadores para pruebas locales (Misma ventana / Misma pestaña)
     const handleLocalUpdate = () => { fetchRates(); };
     window.addEventListener("valora_rate_updated", handleLocalUpdate);
 
@@ -66,7 +86,6 @@ export function CurrencyCalculator() {
       };
     }
 
-    // 2. Conexión WebSocket para Pruebas Multidispositivo en Local y Producción
     let pusherClient: Pusher | null = null;
     const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
     const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "mt1";
@@ -76,7 +95,6 @@ export function CurrencyCalculator() {
       const channel = pusherClient.subscribe("rates-channel");
 
       channel.bind("rates-updated", (data: any) => {
-        console.log("⚡ [Pusher] Tasa recibida:", data);
         if (data && Array.isArray(data.updates)) {
           applyRatesArray(data.updates);
         } else {
@@ -108,7 +126,8 @@ export function CurrencyCalculator() {
   const toggleDirection = () => {
     if (direction === "ORIGIN_PEN") {
       setDirection("PEN_ORIGIN");
-      setSendAmount((100 * activeSellRate).toFixed(2));
+      const newVal = Math.round(100 * activeSellRate).toString().slice(0, 6);
+      setSendAmount(newVal);
     } else {
       setDirection("ORIGIN_PEN");
       setSendAmount("100");
@@ -121,18 +140,22 @@ export function CurrencyCalculator() {
 
   const isEur = originCurrency === "EUR";
 
+  // 🛑 BARRERA ABSOLUTA DE SEGURIDAD E INTEGRIDAD DE DATOS (CRO / VALIDACIÓN)
   const handleStartTransfer = async () => {
     try {
-      const parsedSend = parseFloat(sendAmount);
-      if (isNaN(parsedSend) || parsedSend <= 0) {
-        alert("Por favor, ingresa un monto válido a enviar.");
-        return;
+      const cleanDigits = sendAmount.replace(/\D/g, '');
+      const parsedSend = Number(cleanDigits);
+
+      // Verificación estricta: Si excede de 6 dígitos o de 1,000,000, bloquea e impide abrir el modal
+      if (cleanDigits.length > 6 || parsedSend > 1000000 || isNaN(parsedSend) || parsedSend <= 0) {
+        alert("⚠️ Monto no válido. El envío máximo permitido es de 1,000,000 (máximo 6 dígitos enteros). Por favor, ingresa un valor correcto para continuar.");
+        return; // 🛑 DETIENE EL FLUJO Y BLOQUEA EL MODAL POR COMPLETO
       }
 
       const isSendingOrigin = direction === "ORIGIN_PEN";
 
       const queryParams = new URLSearchParams({
-        sendAmount: parsedSend.toString(),
+        sendAmount: `${parsedSend}.00`,
         sendCurrency: isSendingOrigin ? originCurrency : 'PEN',
         receiveAmount: receiveAmount,
         receiveCurrency: isSendingOrigin ? 'PEN' : originCurrency
@@ -191,39 +214,53 @@ export function CurrencyCalculator() {
       </div>
 
       <div className="space-y-2.5">
+        {/* Contenedor de Envío */}
         <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5">
           <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider block mb-0.5">
             {direction === "ORIGIN_PEN" ? `Tu envías (${originCurrency})` : "Tu envías (PEN)"}
           </span>
+          
           <div className="flex items-center justify-between gap-2">
-            <input
-              type="number"
-              value={sendAmount}
-              onChange={(e) => setSendAmount(e.target.value)}
-              className="w-full bg-transparent text-lg font-bold font-mono text-white outline-none"
-            />
+            <div className="flex items-center bg-transparent text-lg font-bold font-mono text-white">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                defaultValue={sendAmount}
+                onChange={handleSendAmountChange}
+                onPaste={handlePaste}
+                placeholder="390"
+                style={{ width: `${Math.max(sendAmount.length, 1)}ch` }}
+                className="bg-transparent text-lg font-bold font-mono text-white outline-none p-0 m-0"
+              />
+              <span className="text-lg font-bold font-mono text-white select-none">.00</span>
+            </div>
+
             <span className={`px-2 py-0.5 rounded border text-[11px] font-bold font-mono bg-slate-900 border-slate-800 ${isEur ? "text-blue-400" : "text-emerald-400"}`}>
-              {originCurrency}
+              {direction === "ORIGIN_PEN" ? originCurrency : "PEN"}
             </span>
           </div>
         </div>
 
-        <div className="flex justify-center -my-1 relative z-10">
+        {/* Separador de Flotación Cero para el Botón de Invertir (Sin Solapes) */}
+        <div className="relative h-0 flex justify-center items-center z-20">
           <button
             onClick={toggleDirection}
             type="button"
-            className={`w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center transition-all shadow cursor-pointer ${
+            className={`w-7 h-7 rounded-full bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center transition-all shadow-xl cursor-pointer hover:scale-105 ${
               isEur ? "hover:text-blue-400 hover:border-blue-500" : "hover:text-emerald-400 hover:border-emerald-500"
             }`}
             title="Invertir dirección"
           >
-            <ArrowLeftRight className="w-3 h-3" />
+            <ArrowLeftRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5">
+        {/* Contenedor de Recepción */}
+        <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 pt-3.5">
           <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider block mb-0.5">
-            El destinatario recibe
+            El destinatario recibe en Perú
           </span>
           <div className="flex items-center justify-between gap-2">
             <AnimatePresence mode="wait">

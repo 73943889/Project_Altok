@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-// Carga estricta de la clave secreta desde las variables de entorno
+// 1. Instanciación en Top-Level Scope para evitar re-codificar en cada petición
 const JWT_SECRET_STRING = process.env.JWT_SECRET;
+const JWT_SECRET = JWT_SECRET_STRING ? new TextEncoder().encode(JWT_SECRET_STRING) : null;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -10,58 +11,67 @@ export async function middleware(request: NextRequest) {
 
   const isAdminPath = pathname.startsWith('/admin');
   const isClientPath = pathname.startsWith('/portal-cliente');
-  const isAuthPath = pathname === '/login' || pathname === '/register';
+  const isAuthPath = pathname.startsWith('/login') || pathname.startsWith('/register');
 
-  // 1. Blindaje de Seguridad: Previene el arranque si falta JWT_SECRET en Producción
-  if (!JWT_SECRET_STRING) {
-    console.error('❌ CRITICAL_SECURITY_ALERT: La variable JWT_SECRET no está definida en el entorno.');
-    return NextResponse.next();
+  // 2. BLINDAJE CRÍTICO: Si el secreto no está cargado, rechazar el tráfico de inmediato
+  if (!JWT_SECRET) {
+    console.error('❌ CRITICAL_SECURITY_ALERT: JWT_SECRET ausente en el entorno.');
+    return new NextResponse('Error de configuración del servidor.', { status: 500 });
   }
 
-  const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
+  // Helper local para inyectar Encabezados de Seguridad OWASP
+  const applySecurityHeaders = (response: NextResponse) => {
+    // 🟢 ÚNICO CAMBIO: Autorizamos explícitamente a Pusher (wss:// y https://) en el Content-Security-Policy
+    response.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss: ws: https://*.pusher.com wss://*.pusher.com;");
+    
+    response.headers.set('X-Frame-Options', 'DENY');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    return response;
+  };
 
-  // 2. Redirección Inteligente (UX): Si ya está autenticado, no permitir acceso a /login o /register
+  // 3. Redirección UX: Usuario con sesión activa intentando entrar a /login o /register
   if (token && isAuthPath) {
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET);
       const userRole = (payload.role as string) || 'client';
       const destination = userRole === 'admin' ? '/admin' : '/portal-cliente';
-      return NextResponse.redirect(new URL(destination, request.url));
+      return applySecurityHeaders(NextResponse.redirect(new URL(destination, request.url)));
     } catch {
-      // Si el token es inválido o expiró, limpiamos la cookie corrupta y permitimos ver el login
+      // Token corrupto: se destruye la cookie y se permite ver la pantalla de login
       const response = NextResponse.next();
       response.cookies.set('auth_token', '', { maxAge: 0, path: '/' });
-      return response;
+      return applySecurityHeaders(response);
     }
   }
 
-  // 3. Rutas Públicas: Si no es una ruta protegida, continuar la ejecución de inmediato
+  // 4. Continuación inmediata para rutas públicas
   if (!isAdminPath && !isClientPath) {
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
 
-  // 4. Verificación de Existencia de Token en Rutas Protegidas
+  // 5. Bloqueo sin Token en Rutas Protegidas
   if (!token) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    return applySecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
-  // 5. Control de Acceso Basado en Roles (RBAC Estricto)
+  // 6. Validación de Firma y Roles RBAC
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const userRole = (payload.role as string) || 'client';
 
-    // Regla de Bloqueo: Si un rol CLIENTE intenta ingresar a /admin
+    // Restricción de acceso para clientes intentando ingresar a /admin
     if (isAdminPath && userRole !== 'admin') {
-      return NextResponse.redirect(new URL('/portal-cliente', request.url));
+      return applySecurityHeaders(NextResponse.redirect(new URL('/portal-cliente', request.url)));
     }
 
-    // Permitir el paso si cumple con el rol asignado
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
 
   } catch (error) {
-    // Si el JWT expira, es manipulado o inválido: destrucción de cookies en el Edge y rechazo 401/307
+    // Expiración o manipulación: purga completa de sesión
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('alert', 'sesion_expirada');
 
@@ -69,11 +79,10 @@ export async function middleware(request: NextRequest) {
     response.cookies.set('auth_token', '', { maxAge: 0, path: '/' });
     response.cookies.set('user_email', '', { maxAge: 0, path: '/' });
 
-    return response;
+    return applySecurityHeaders(response);
   }
 }
 
-// Configuración de captura completa de rutas (Raíz y Subrutas)
 export const config = {
   matcher: [
     '/admin',

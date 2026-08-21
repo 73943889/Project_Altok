@@ -57,7 +57,7 @@ function LoginFormContent() {
       width={400}
       height={120}
       priority
-        className="w-56 sm:w-64 md:w-72 h-auto object-contain mix-blend-screen drop-shadow-[0_0_25px_rgba(16,185,129,0.2)]"
+        className="w-56 sm:w-55 md:w-60 h-auto object-contain mix-blend-screen drop-shadow-[0_0_25px_rgba(16,185,129,0.2)]"
     />
   </Link>
 
@@ -88,7 +88,8 @@ function LoginFormContent() {
               required
               type="email"
               placeholder="ejm:pedro@gmail.com"
-              value={email}
+              maxLength={100} 
+                           value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
             />
@@ -109,6 +110,7 @@ function LoginFormContent() {
     <input
       required
       type={showPassword ? "text" : "password"}
+      maxLength={64}
       placeholder="••••••••"
       value={password}
       onChange={(e) => setPassword(e.target.value)}

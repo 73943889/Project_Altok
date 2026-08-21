@@ -308,17 +308,19 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
       <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center transition-opacity hover:opacity-90 py-1" aria-label="Ir al inicio">
-              <div className="relative flex items-center">
-                <Image
-                  src="/logo.webp"
-                  alt="Altok€!"
-                  width={240}
-                  height={200}
-                  priority
-                  className="object-contain w-auto h-14 sm:h-16 md:h-[4.5rem]"
-                />
-              </div>
+            <Link 
+              href="/" 
+              className="inline-block transition-transform duration-300 hover:scale-105 mb-3 select-none outline-none"
+              aria-label="Volver al inicio"
+            >
+              <Image
+                src="/logo.webp" /* Cambia a .webp si corresponde */
+                alt="Altok€! Envíos rápidos y seguros"
+                width={400}
+                height={120}
+                priority
+                  className="w-56 sm:w-45 md:w-35 h-auto object-contain mix-blend-screen drop-shadow-[0_0_25px_rgba(16,185,129,0.2)]"
+              />
             </Link>
             <div className="hidden sm:block h-8 w-px bg-slate-800" />
             <div>
